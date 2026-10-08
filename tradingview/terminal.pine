@@ -1,0 +1,248 @@
+// This Pine Script® code is subject to the terms of the MIT License (see LICENSE).
+// Bloomberg-style market terminal for TradingView: quote, ranges, performance,
+// technicals and a multi-asset monitor in one amber-on-black panel.
+//@version=6
+indicator("Terminal — Bloomberg-Style Dashboard", shorttitle = "TERMINAL", overlay = true)
+
+// ───────────────────────────── Inputs ─────────────────────────────
+const string G_LAY = "Layout"
+panelPos  = input.string("Top Right", "Panel position", options = ["Top Right", "Top Left", "Middle Right", "Bottom Right", "Bottom Left"], group = G_LAY)
+textSz    = input.string("Small", "Text size", options = ["Tiny", "Small", "Normal"], group = G_LAY)
+showPerf  = input.bool(true, "Show PERFORMANCE", group = G_LAY)
+showTech  = input.bool(true, "Show TECHNICALS", group = G_LAY)
+showWatch = input.bool(true, "Show MONITOR", group = G_LAY)
+
+const string G_BEN = "Benchmark"
+benchSym = input.symbol("AMEX:SPY", "Benchmark (relative strength)", group = G_BEN)
+
+const string G_W = "Monitor (watchlist)"
+w1 = input.symbol("AMEX:SPY", "1", group = G_W)
+w2 = input.symbol("NASDAQ:QQQ", "2", group = G_W)
+w3 = input.symbol("TVC:DXY", "3", group = G_W)
+w4 = input.symbol("TVC:US10Y", "4", group = G_W)
+w5 = input.symbol("TVC:GOLD", "5", group = G_W)
+w6 = input.symbol("BITSTAMP:BTCUSD", "6", group = G_W)
+
+const string G_TA = "Technicals"
+rsiLen = input.int(14, "RSI length", minval = 2, group = G_TA)
+atrLen = input.int(14, "ATR length", minval = 1, group = G_TA)
+maLen1 = input.int(20, "EMA fast", minval = 1, group = G_TA)
+maLen2 = input.int(50, "EMA mid", minval = 1, group = G_TA)
+maLen3 = input.int(200, "EMA slow", minval = 1, group = G_TA)
+
+const string G_OV = "Chart overlays"
+showMA   = input.bool(true, "Plot EMAs", group = G_OV)
+showVWAP = input.bool(true, "Plot VWAP", group = G_OV)
+showPDHL = input.bool(true, "Plot prior-day high/low (intraday)", group = G_OV)
+
+// ───────────────────────────── Palette ─────────────────────────────
+const color C_BG    = #000000
+const color C_ALT   = #0D0D0D
+const color C_AMBER = #FB8B1E
+const color C_WHITE = #E6E6E6
+const color C_GREY  = #8C8C8C
+const color C_UP    = #4AF626
+const color C_DN    = #FF433D
+const color C_BLUE  = #3FA9F5
+const color C_GRID  = #262626
+
+// ───────────────────────────── Helpers ─────────────────────────────
+f_pos(string p) =>
+    switch p
+        "Top Left"     => position.top_left
+        "Middle Right" => position.middle_right
+        "Bottom Right" => position.bottom_right
+        "Bottom Left"  => position.bottom_left
+        => position.top_right
+
+f_size(string s) =>
+    switch s
+        "Tiny"   => size.tiny
+        "Normal" => size.normal
+        => size.small
+
+f_ret(float a, float b) => na(a) or na(b) or b == 0 ? na : (a / b - 1) * 100
+
+f_pct(float x) => na(x) ? "—" : (x >= 0 ? "+" : "") + str.tostring(x, "0.00") + "%"
+
+f_px(float x) => na(x) ? "—" : str.tostring(x, format.mintick)
+
+// Price formatter for other symbols, where the chart's mintick does not apply.
+f_num(float x) =>
+    na(x) ? "—" : math.abs(x) >= 1000 ? str.tostring(x, "#,##0.00") : math.abs(x) >= 1 ? str.tostring(x, "0.00") : str.tostring(x, "0.0000")
+
+f_vol(float x) => na(x) ? "—" : str.tostring(x, format.volume)
+
+f_col(float x) => na(x) ? C_GREY : x >= 0 ? C_UP : C_DN
+
+f_ticker(string s) =>
+    parts = str.split(s, ":")
+    array.get(parts, array.size(parts) - 1)
+
+// ───────────────────────────── Data ─────────────────────────────
+// Daily context for the chart symbol (quote, ranges, performance).
+[dC, dPC, dO, dH, dL, dV, dAvgV, h52, l52, c5, c21, c63, c252] = request.security(syminfo.tickerid, "D",
+     [close, close[1], open, high, low, volume, ta.sma(volume, 20), ta.highest(high, 252), ta.lowest(low, 252), close[5], close[21], close[63], close[252]])
+
+// Prior-year close (non-repainting idiom) for YTD, and prior-day levels for overlays.
+yC = request.security(syminfo.tickerid, "12M", close[1], lookahead = barmerge.lookahead_on)
+[pdH, pdL] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+
+[bC, b21, b63] = request.security(benchSym, "D", [close, close[21], close[63]], ignore_invalid_symbol = true)
+
+f_quote(string s) => request.security(s, "D", [close, close[1]], ignore_invalid_symbol = true)
+[q1, p1] = f_quote(w1)
+[q2, p2] = f_quote(w2)
+[q3, p3] = f_quote(w3)
+[q4, p4] = f_quote(w4)
+[q5, p5] = f_quote(w5)
+[q6, p6] = f_quote(w6)
+
+// Chart-timeframe technicals.
+rsi  = ta.rsi(close, rsiLen)
+atr  = ta.atr(atrLen)
+[macd, macdSig, macdHist] = ta.macd(close, 12, 26, 9)
+ma1  = ta.ema(close, maLen1)
+ma2  = ta.ema(close, maLen2)
+ma3  = ta.ema(close, maLen3)
+vwap = ta.vwap(hlc3)
+
+// ───────────────────────────── Overlays ─────────────────────────────
+plot(showMA ? ma1 : na, "EMA fast", color = C_AMBER, linewidth = 1)
+plot(showMA ? ma2 : na, "EMA mid", color = C_BLUE, linewidth = 1)
+plot(showMA ? ma3 : na, "EMA slow", color = C_WHITE, linewidth = 2)
+plot(showVWAP ? vwap : na, "VWAP", color = color.new(#C77DFF, 0), linewidth = 1, style = plot.style_linebr)
+plot(showPDHL and timeframe.isintraday ? pdH : na, "Prior-day high", color = color.new(C_UP, 40), style = plot.style_linebr)
+plot(showPDHL and timeframe.isintraday ? pdL : na, "Prior-day low", color = color.new(C_DN, 40), style = plot.style_linebr)
+
+// ───────────────────────────── Alerts ─────────────────────────────
+alertcondition(ta.crossover(close, h52[1]), "New 52-week high", "{{ticker}} broke its 52-week high at {{close}}")
+alertcondition(ta.crossunder(close, l52[1]), "New 52-week low", "{{ticker}} broke its 52-week low at {{close}}")
+alertcondition(ta.crossover(rsi, 70), "RSI overbought", "{{ticker}} RSI crossed above 70")
+alertcondition(ta.crossunder(rsi, 30), "RSI oversold", "{{ticker}} RSI crossed below 30")
+alertcondition(ta.cross(ma1, ma2), "EMA fast/mid cross", "{{ticker}} fast/mid EMA cross at {{close}}")
+
+// ───────────────────────────── Panel ─────────────────────────────
+var table T = table.new(f_pos(panelPos), 4, 40, bgcolor = C_BG, frame_color = C_AMBER, frame_width = 1, border_color = C_GRID, border_width = 1)
+SZ = f_size(textSz)
+
+f_cell(int c, int r, string t, color tc, color bg, string al) =>
+    table.cell(T, c, r, t, text_color = tc, bgcolor = bg, text_size = SZ, text_halign = al, text_font_family = font.family_monospace)
+
+f_band(int r, string t, color tc, color bg) =>
+    f_cell(0, r, t, tc, bg, text.align_left)
+    table.merge_cells(T, 0, r, 3, r)
+
+// Two label/value pairs on one row.
+f_kv(int r, string k1, string v1, color c1, string k2, string v2, color c2) =>
+    bg = r % 2 == 0 ? C_BG : C_ALT
+    f_cell(0, r, k1, C_AMBER, bg, text.align_left)
+    f_cell(1, r, v1, c1, bg, text.align_right)
+    f_cell(2, r, k2, C_AMBER, bg, text.align_left)
+    f_cell(3, r, v2, c2, bg, text.align_right)
+
+f_watch(int r, string s, float q, float p) =>
+    bg = r % 2 == 0 ? C_BG : C_ALT
+    chg = na(q) or na(p) ? na : q - p
+    pct = f_ret(q, p)
+    f_cell(0, r, f_ticker(s), C_AMBER, bg, text.align_left)
+    f_cell(1, r, na(q) ? "N/A" : f_num(q), C_WHITE, bg, text.align_right)
+    f_cell(2, r, na(chg) ? "—" : (chg >= 0 ? "+" : "") + f_num(chg), f_col(chg), bg, text.align_right)
+    f_cell(3, r, f_pct(pct), f_col(pct), bg, text.align_right)
+
+if barstate.islast
+    table.clear(T, 0, 0, 3, 39)
+    int r = 0
+
+    // Header: security line + description.
+    f_band(r, " " + syminfo.ticker + " " + str.upper(syminfo.type) + "  <GO>   " + syminfo.prefix + " · " + syminfo.currency + " · " + timeframe.period, C_BG, C_AMBER)
+    r += 1
+    f_band(r, " " + str.upper(syminfo.description), C_WHITE, C_BG)
+    r += 1
+
+    // Quote.
+    last   = close
+    chg    = na(dPC) ? na : last - dPC
+    chgPct = f_ret(last, dPC)
+    f_kv(r, "LAST", f_px(last), C_WHITE, "CHG", na(chg) ? "—" : (chg >= 0 ? "+" : "") + f_px(chg) + " " + f_pct(chgPct), f_col(chg))
+    r += 1
+    f_kv(r, "OPEN", f_px(dO), C_WHITE, "HIGH", f_px(dH), C_WHITE)
+    r += 1
+    f_kv(r, "LOW", f_px(dL), C_WHITE, "PREV", f_px(dPC), C_WHITE)
+    r += 1
+    volRatio = na(dV) or na(dAvgV) or dAvgV == 0 ? na : dV / dAvgV
+    f_kv(r, "VOLUME", f_vol(dV), C_WHITE, "AVG20D", f_vol(dAvgV) + (na(volRatio) ? "" : " " + str.tostring(volRatio, "0.0") + "x"), na(volRatio) ? C_WHITE : volRatio >= 1.5 ? C_AMBER : C_WHITE)
+    r += 1
+    f_kv(r, "52W HI", f_px(h52), C_WHITE, "52W LO", f_px(l52), C_WHITE)
+    r += 1
+    rngPct = na(h52) or na(l52) or h52 == l52 ? na : (last - l52) / (h52 - l52)
+    if not na(rngPct)
+        filled = math.max(0, math.min(20, int(math.round(rngPct * 20))))
+        f_band(r, " 52W RANGE  L " + str.repeat("█", filled) + str.repeat("░", 20 - filled) + " H  " + str.tostring(rngPct * 100, "0") + "%", C_AMBER, C_BG)
+        r += 1
+
+    // Performance.
+    if showPerf
+        f_band(r, " PERFORMANCE", C_BG, C_AMBER)
+        r += 1
+        p1w = f_ret(dC, c5)
+        p1m = f_ret(dC, c21)
+        p3m = f_ret(dC, c63)
+        p1y = f_ret(dC, c252)
+        pyt = f_ret(dC, yC)
+        f_kv(r, "1D", f_pct(chgPct), f_col(chgPct), "1W", f_pct(p1w), f_col(p1w))
+        r += 1
+        f_kv(r, "1M", f_pct(p1m), f_col(p1m), "3M", f_pct(p3m), f_col(p3m))
+        r += 1
+        f_kv(r, "YTD", f_pct(pyt), f_col(pyt), "1Y", f_pct(p1y), f_col(p1y))
+        r += 1
+        rs1 = na(p1m) ? na : p1m - f_ret(bC, b21)
+        rs3 = na(p3m) ? na : p3m - f_ret(bC, b63)
+        bt  = f_ticker(benchSym)
+        f_kv(r, "vs " + bt + " 1M", f_pct(rs1), f_col(rs1), "vs " + bt + " 3M", f_pct(rs3), f_col(rs3))
+        r += 1
+
+    // Technicals.
+    if showTech
+        f_band(r, " TECHNICALS (" + timeframe.period + ")", C_BG, C_AMBER)
+        r += 1
+        rsiCol = rsi >= 70 ? C_DN : rsi <= 30 ? C_UP : C_WHITE
+        atrPct = f_ret(last + atr, last)
+        f_kv(r, "RSI" + str.tostring(rsiLen), str.tostring(rsi, "0.0"), rsiCol, "ATR" + str.tostring(atrLen), f_px(atr) + " (" + str.tostring(atrPct, "0.0") + "%)", C_WHITE)
+        r += 1
+        f_kv(r, "MACD", str.tostring(macd, "0.00"), f_col(macd), "HIST", str.tostring(macdHist, "0.00"), f_col(macdHist))
+        r += 1
+        f_kv(r, "EMA" + str.tostring(maLen1), f_px(ma1), last >= ma1 ? C_UP : C_DN, "EMA" + str.tostring(maLen2), f_px(ma2), last >= ma2 ? C_UP : C_DN)
+        r += 1
+        f_kv(r, "EMA" + str.tostring(maLen3), f_px(ma3), last >= ma3 ? C_UP : C_DN, "VWAP", f_px(vwap), na(vwap) ? C_GREY : last >= vwap ? C_UP : C_DN)
+        r += 1
+        bull  = last > ma3 and ma1 > ma2
+        bear  = last < ma3 and ma1 < ma2
+        trend = bull ? "▲ BULLISH" : bear ? "▼ BEARISH" : "◆ NEUTRAL"
+        f_band(r, " TREND  " + trend, bull ? C_UP : bear ? C_DN : C_AMBER, C_BG)
+        r += 1
+
+    // Multi-asset monitor.
+    if showWatch
+        f_band(r, " MONITOR", C_BG, C_AMBER)
+        r += 1
+        f_cell(0, r, "TICKER", C_GREY, C_BG, text.align_left)
+        f_cell(1, r, "LAST", C_GREY, C_BG, text.align_right)
+        f_cell(2, r, "NET", C_GREY, C_BG, text.align_right)
+        f_cell(3, r, "%CHG", C_GREY, C_BG, text.align_right)
+        r += 1
+        f_watch(r, w1, q1, p1)
+        r += 1
+        f_watch(r, w2, q2, p2)
+        r += 1
+        f_watch(r, w3, q3, p3)
+        r += 1
+        f_watch(r, w4, q4, p4)
+        r += 1
+        f_watch(r, w5, q5, p5)
+        r += 1
+        f_watch(r, w6, q6, p6)
+        r += 1
+
+    // Status line.
+    f_band(r, " " + str.format_time(timenow, "yyyy-MM-dd HH:mm:ss", syminfo.timezone) + " " + syminfo.timezone + (barstate.isrealtime ? "  ● LIVE" : "  ○ DELAYED/CLOSED"), C_GREY, C_BG)
