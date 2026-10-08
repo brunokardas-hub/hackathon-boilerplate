@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Predictions Cup bot - private/local files
+api_key.txt
+bot_state*.json
+markets_manual_backup.json
