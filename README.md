@@ -29,6 +29,16 @@ A Bloomberg-style page in a single file. Use it at **https://brunokardas-hub.git
 - **EQS**: TradingView's screener for US stocks, crypto or FX, with filters and column sets.
 - **AI analyst**: ask questions in plain English. Claude gets the symbol on screen, plus the live quote and recent headlines if you added a Finnhub key, and can search the web. Add your own [Anthropic API key](https://platform.claude.com/settings/keys) in the AI screen's SETUP panel. You pay Anthropic per question, and the screen shows the estimated cost of each answer. The default model is Claude Opus 5.5; Sonnet 5.5 costs about half as much and Haiku 5.5 far less. Answers are information, not financial advice.
 
+- **Analyst note and score** (MAIN, left): a rule-based 0–100 score and plain-English summary. Crypto uses Binance daily candles (EMAs, RSI, MACD, 1-year range, 30 days vs BTC); US stocks use Finnhub (52-week range, 5-day/13-week/26-week returns, strength vs the S&P 500, analyst consensus, next earnings).
+- **Live quote strip** above the chart: the price ticking in real time with the day's change and a sparkline. Crypto works with no key (Binance, every 10 s); stocks and FX use Finnhub (quotes every 60 s, plus real-time trades over its websocket).
+- **My list**: `ADD TSLA` / `DEL TSLA` edit the watchlist shown in the monitor and the ticker strip.
+- **GRID**: 2 or 4 charts at once, either one symbol on several timeframes or several symbols (`GRID 4 NVDA SPY QQQ SMH`).
+- **RES**: earnings calendar (your symbols, the largest companies, or everything), analyst ratings, and insider trades. Needs a free Finnhub key.
+- **PORT**: portfolio with live value, profit and loss, today's change and weights. `BUY AAPL 10 @ 180`, `SELL AAPL 5`, or use the form.
+- **ALRT**: price alerts (`ALERT BTCUSD > 70000`) with a notification, a sound and, optionally, an AI explanation of the move; plus a position-size calculator. Alerts are checked while the page is open.
+- **Quick AI questions**: one-tap buttons in the AI screen (explain this move, bull vs bear, latest earnings, levels and catalysts, vs sector).
+- **Installable app**: click ⤓ INSTALL APP (Chrome/Edge), or on iPhone use Share → Add to Home Screen. It opens full-screen with its own icon.
+
 API keys are stored only in your browser and are sent only to their own provider (Finnhub or Anthropic). Don't save them on a shared computer, and set a monthly spend limit in the Claude Console.
 
 The chart is TradingView's embeddable widget, which can't load custom Pine scripts. To use `terminal.pine`, open it on tradingview.com.

@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Market Terminal</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Terminal">
 <style>
   :root {
     --bg: #000;
@@ -59,7 +67,7 @@
   .panel > h2 small { color: var(--muted); font-weight: 400; }
   .panel .body { flex: 1; min-height: 0; position: relative; overflow: hidden; }
   .panel .body > .tradingview-widget-container { position: absolute; inset: 0; }
-  #p-info { grid-area: info; } #p-quote { grid-area: quote; } #p-chart { grid-area: chart; }
+  #p-info { grid-area: info; } #p-chart { grid-area: chart; }
   #p-news { grid-area: news; } #p-ta { grid-area: ta; } #p-fa { grid-area: fa; } #p-eco { grid-area: eco; }
   .panel.flash { outline: 1px solid var(--amber); outline-offset: -1px; }
 
@@ -133,10 +141,84 @@
   .help td { padding: 2px 12px 2px 0; vertical-align: top; }
   .help td:first-child { color: var(--amber); white-space: nowrap; }
 
+  /* Left column on MAIN: analyst note above the monitor */
+  #p-left { grid-area: quote; display: flex; flex-direction: column; gap: 1px; background: var(--line); min-height: 0; min-width: 0; }
+  #p-note { flex: 0 0 auto; max-height: 58%; }
+  #p-note .note-body { overflow-y: auto; padding: 8px; }
+  #p-quote { flex: 1 1 auto; min-height: 200px; }
+  .score { display: flex; align-items: baseline; gap: 8px; }
+  .score .num { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .score .lbl { font-weight: 700; letter-spacing: .06em; }
+  .meter { height: 6px; background: #1a1a1a; margin: 4px 0 8px; position: relative; }
+  .meter > i { position: absolute; inset: 0 auto 0 0; background: var(--amber); }
+  .note-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .note-list li { padding-left: 10px; position: relative; }
+  .note-list li::before { content: "›"; position: absolute; left: 0; color: var(--amber); }
+  .fine { color: var(--muted); font-size: 11px; margin-top: 6px; }
+  .up { color: var(--up); } .down { color: var(--down); } .amber { color: var(--amber); } .muted { color: var(--muted); }
+
+  /* Live quote strip above the chart */
+  .live { display: flex; align-items: center; gap: 12px; padding: 4px 8px; border-bottom: 1px solid var(--line); min-height: 34px; flex-wrap: wrap; }
+  .live .px { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; transition: color .4s; }
+  .live .px.tick-up { color: var(--up); } .live .px.tick-down { color: var(--down); }
+  .live .chg { font-variant-numeric: tabular-nums; }
+  .live canvas { width: 160px; height: 26px; }
+  .live .src { margin-left: auto; color: var(--muted); font-size: 11px; }
+
+  /* Shared panels in full-screen views */
+  .cols { flex: 1; min-height: 0; display: grid; gap: 1px; background: var(--line); }
+  .cols > .panel { min-height: 0; }
+  .cols .scroll { flex: 1; overflow: auto; padding: 8px; min-height: 0; }
+  table.t { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  table.t th { text-align: left; color: var(--muted); font-weight: 400; font-size: 11px; padding: 3px 6px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
+  table.t td { padding: 3px 6px; border-bottom: 1px solid #141414; white-space: nowrap; }
+  table.t td.r, table.t th.r { text-align: right; }
+  table.t tr.mine td:first-child { color: var(--amber); }
+  table.t tr.total td { border-top: 1px solid var(--amber); font-weight: 700; }
+  .x { background: transparent; color: var(--muted); border: 0; padding: 0 4px; }
+  .x:hover { color: var(--down); }
+  .form { display: flex; gap: 6px; flex-wrap: wrap; align-items: end; padding: 8px; border-bottom: 1px solid var(--line); }
+  .form label { display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: 11px; }
+  .form input, .form select, .calc input { background: #000; color: var(--amber); border: 1px solid var(--line); padding: 4px 6px; font: inherit; width: 110px; }
+  .form select { width: auto; max-width: 100%; }
+  table.t td.wrap { white-space: normal; min-width: 90px; }
+  .form button, .tbtn { background: #1a1a1a; color: var(--amber); border: 1px solid var(--line); padding: 4px 10px; }
+  .tbtn.on { background: var(--amber); color: #000; }
+  .msgline { color: var(--muted); padding: 10px 8px; }
+  .bar3 { display: flex; height: 14px; margin: 6px 0; }
+  .bar3 > span { display: block; height: 100%; }
+  .chip { display: inline-block; padding: 0 5px; font-size: 11px; font-weight: 700; }
+  .chip.buy { background: var(--up); color: #000; } .chip.sell { background: var(--down); color: #000; } .chip.other { background: #333; color: var(--text); }
+  .calc { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; padding: 8px; max-width: 460px; }
+  .calc input { width: 100%; }
+  .calc .out { color: var(--text); font-variant-numeric: tabular-nums; }
+  .calc .big { font-size: 22px; font-weight: 700; color: var(--amber); }
+  .calc hr { grid-column: 1 / -1; border: 0; border-top: 1px solid var(--line); width: 100%; margin: 4px 0; }
+
+  /* Multi-chart grid */
+  .gridcharts { flex: 1; min-height: 0; display: grid; gap: 1px; background: var(--line); }
+  .gridcharts.n2 { grid-template-columns: 1fr 1fr; }
+  .gridcharts.n4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+  .gridcharts > div { position: relative; background: var(--panel); min-height: 0; min-width: 0; }
+  .gridcharts .cap { position: absolute; top: 0; right: 0; z-index: 2; background: var(--amber); color: #000; font-size: 10px; font-weight: 700; padding: 1px 6px; pointer-events: none; }
+  .gridcharts .cell { position: absolute; inset: 0; }
+
+  /* Quick AI prompts */
+  .quick { display: flex; gap: 4px; flex-wrap: wrap; padding: 6px 10px 0; }
+  .quick button { background: transparent; color: var(--amber); border: 1px solid var(--line); padding: 2px 8px; font-size: 11px; }
+  .quick button:hover { background: var(--amber); color: #000; }
+
+  /* Toasts and install button */
+  .toasts { position: fixed; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 20; max-width: min(360px, calc(100vw - 24px)); }
+  .toast { background: #0a0a0a; border: 1px solid var(--amber); padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.6); }
+  .toast b { color: var(--amber); }
+  .toast.alert { border-color: var(--up); }
+  .cmd .install { background: #000; color: var(--amber); border: 0; padding: 5px 10px; font-weight: 700; }
+
   @media (max-width: 1100px) {
     .grid {
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: 110px 72vh 520px 360px 360px 420px 420px;
+      grid-template-rows: 110px 72vh 520px 680px 360px 420px 420px;
       grid-template-areas: "info" "chart" "news" "quote" "ta" "fa" "eco";
       height: auto; min-height: 0;
     }
@@ -146,6 +228,11 @@
     .ai-side { border-top: 1px solid var(--line); }
     .full { height: auto; min-height: calc(100vh - 110px); }
     .full .body { min-height: 70vh; }
+    .cols { grid-template-columns: minmax(0, 1fr) !important; }
+    .cols > .panel { min-height: 420px; }
+    .gridcharts.n2, .gridcharts.n4 { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-rows: 60vh; }
+    #p-note { max-height: none; }
+    .live canvas { width: 110px; }
     .fkeys .hint { display: none; }
   }
 </style>
@@ -159,12 +246,17 @@
     <button class="go" type="submit">&lt;GO&gt;</button>
   </form>
   <div class="clocks" id="clocks"></div>
+  <button class="install" id="installBtn" type="button" hidden>⤓ INSTALL APP</button>
 </header>
 
 <nav class="fkeys">
   <button data-cmd="MAIN" data-view="main" class="on">MAIN</button>
   <button data-cmd="HEAT" data-view="heat">HEAT · HEATMAP</button>
   <button data-cmd="EQS" data-view="eqs">EQS · SCREENER</button>
+  <button data-cmd="GRID" data-view="grid">GRID · MULTI-CHART</button>
+  <button data-cmd="RES" data-view="res">RES · RESEARCH</button>
+  <button data-cmd="PORT" data-view="port">PORT · PORTFOLIO</button>
+  <button data-cmd="ALRT" data-view="tools">ALRT · ALERTS &amp; RISK</button>
   <button data-cmd="AI" data-view="ai">AI · ANALYST</button>
   <span class="sep"></span>
   <button data-cmd="N">N · NEWS</button>
@@ -180,8 +272,13 @@
 
 <main class="grid view active" id="v-main">
   <section class="panel" id="p-info"><h2>DES · SECURITY <small id="symLabel"></small></h2><div class="body" id="w-info"></div></section>
-  <section class="panel" id="p-quote"><h2>MONITOR</h2><div class="body" id="w-quote"></div></section>
-  <section class="panel" id="p-chart"><h2>GP · CHART <button type="button" class="maxbtn" id="maxBtn" title="Chart fills the screen (Esc to exit)">⤢ MAX</button></h2><div class="body"><div id="w-chart" style="position:absolute;inset:0"></div></div></section>
+  <div id="p-left">
+    <section class="panel" id="p-note"><h2>NOTE · ANALYST SCORE <small id="noteSrc"></small></h2><div class="note-body" id="w-note"></div></section>
+    <section class="panel" id="p-quote"><h2>MONITOR <small>ADD / DEL &lt;ticker&gt; edits My list</small></h2><div class="body" id="w-quote"></div></section>
+  </div>
+  <section class="panel" id="p-chart"><h2>GP · CHART <button type="button" class="maxbtn" id="maxBtn" title="Chart fills the screen (Esc to exit)">⤢ MAX</button></h2>
+    <div class="live" id="liveStrip"><span class="amber" id="liveSym"></span><span class="px" id="livePx">—</span><span class="chg" id="liveChg"></span><canvas id="liveSpark" aria-label="Price ticks since the page opened"></canvas><span class="src" id="liveSrc"></span></div>
+    <div class="body"><div id="w-chart" style="position:absolute;inset:0"></div></div></section>
   <section class="panel" id="p-news">
     <h2>N · NEWS <small id="newsStatus"></small></h2>
     <div class="news-tabs" id="newsTabs">
@@ -232,6 +329,102 @@
   </div>
 </section>
 
+<section class="view" id="v-grid">
+  <div class="full">
+    <div class="subtabs" id="gridTabs">
+      <span class="title">GRID · MULTI-CHART</span>
+      <button data-n="2">2 CHARTS</button>
+      <button data-n="4" class="on">4 CHARTS</button>
+      <span class="sep" style="width:1px;align-self:stretch;background:var(--line)"></span>
+      <button data-mode="tf" class="on">SAME SYMBOL · 4 TIMEFRAMES</button>
+      <button data-mode="sym">DIFFERENT SYMBOLS</button>
+      <span style="margin-left:auto">Type <b class="amber">GRID 4 NVDA SPY QQQ SMH</b> to pick symbols</span>
+    </div>
+    <div class="gridcharts n4" id="gridCharts"></div>
+  </div>
+</section>
+
+<section class="view" id="v-res">
+  <div class="full">
+    <div class="subtabs"><span class="title">RES · RESEARCH</span><span id="resCtx"></span><span style="margin-left:auto">Data: Finnhub (free key needed)</span></div>
+    <div class="cols" id="resCols" style="grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr);">
+      <section class="panel">
+        <h2>ERN · EARNINGS CALENDAR <small id="ernRange"></small></h2>
+        <div class="form">
+          <label>Show<select id="ernFilter"><option value="mine">My list + on screen</option><option value="big">Largest companies</option><option value="all">Everything</option></select></label>
+          <label>Search<input id="ernSearch" placeholder="ticker"></label>
+          <label>Window<select id="ernWin"><option value="7">This week</option><option value="14" selected>Next 2 weeks</option><option value="30">Next 30 days</option></select></label>
+        </div>
+        <div class="scroll" id="ernBody"></div>
+      </section>
+      <section class="panel">
+        <h2>ANR · ANALYST RATINGS <small id="anrSym"></small></h2>
+        <div class="scroll" id="anrBody"></div>
+      </section>
+      <section class="panel">
+        <h2>INS · INSIDER TRADES <small id="insSym"></small></h2>
+        <div class="scroll" id="insBody"></div>
+      </section>
+    </div>
+  </div>
+</section>
+
+<section class="view" id="v-port">
+  <div class="full">
+    <div class="subtabs"><span class="title">PORT · PORTFOLIO</span><span id="portStatus" class="muted"></span><span style="margin-left:auto">Or type <b class="amber">BUY AAPL 10 @ 180</b> · <b class="amber">SELL AAPL 5</b></span></div>
+    <form class="form" id="portForm" autocomplete="off">
+      <label>Symbol<input id="pfSym" placeholder="AAPL or BTCUSD" required></label>
+      <label>Quantity<input id="pfQty" type="number" step="any" min="0" placeholder="10" required></label>
+      <label>Avg cost (USD)<input id="pfCost" type="number" step="any" min="0" placeholder="180.00" required></label>
+      <button type="submit">ADD / UPDATE</button>
+    </form>
+    <div class="scroll" style="flex:1;overflow:auto;padding:8px" id="portBody"></div>
+  </div>
+</section>
+
+<section class="view" id="v-tools">
+  <div class="full">
+    <div class="subtabs"><span class="title">ALRT · ALERTS &amp; RISK</span><span style="margin-left:auto">Or type <b class="amber">ALERT BTCUSD &gt; 70000</b></span></div>
+    <div class="cols" style="grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);">
+      <section class="panel">
+        <h2>ALRT · PRICE ALERTS <small id="alrtStatus"></small></h2>
+        <form class="form" id="alertForm" autocomplete="off">
+          <label>Symbol<input id="alSym" placeholder="BTCUSD" required></label>
+          <label>When price is<select id="alOp"><option value=">">above</option><option value="<">below</option></select></label>
+          <label>Price<input id="alPx" type="number" step="any" required></label>
+          <button type="submit">ADD ALERT</button>
+          <button type="button" id="notifBtn">ENABLE NOTIFICATIONS</button>
+        </form>
+        <div class="form" style="border-bottom:0;padding-bottom:0">
+          <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="alAi" style="width:auto"> When an alert fires, ask the AI analyst why it moved (≈$0.05–0.15 each, needs an Anthropic key)</label>
+        </div>
+        <div class="scroll" id="alertBody"></div>
+      </section>
+      <section class="panel">
+        <h2>CALC · POSITION SIZE</h2>
+        <div class="scroll">
+          <form class="calc" id="calc" autocomplete="off" onsubmit="return false">
+            <label for="cAcct">Account size ($)</label><input id="cAcct" type="number" step="any" min="0" value="10000">
+            <label for="cRisk">Risk per trade (%)</label><input id="cRisk" type="number" step="any" min="0" value="1">
+            <label for="cEntry">Entry price</label><div style="display:flex;gap:6px"><input id="cEntry" type="number" step="any" min="0"><button type="button" class="tbtn" id="cLive">LIVE</button></div>
+            <label for="cStop">Stop-loss price</label><input id="cStop" type="number" step="any" min="0">
+            <label for="cTarget">Target price (optional)</label><input id="cTarget" type="number" step="any" min="0">
+            <label for="cFrac">Fractional size</label><input id="cFrac" type="checkbox" style="width:auto;justify-self:start">
+            <hr>
+            <span class="muted">Position size</span><span class="out big" id="oSize">—</span>
+            <span class="muted">Position value</span><span class="out" id="oValue">—</span>
+            <span class="muted">Money at risk</span><span class="out" id="oRisk">—</span>
+            <span class="muted">Risk per unit</span><span class="out" id="oPer">—</span>
+            <span class="muted">Reward : risk</span><span class="out" id="oRR">—</span>
+            <span class="muted">Profit at target</span><span class="out" id="oProfit">—</span>
+          </form>
+          <p class="fine" style="padding:0 8px">Size = (account × risk %) ÷ (entry − stop). If the position is larger than the account, it needs margin.</p>
+        </div>
+      </section>
+    </div>
+  </div>
+</section>
+
 <section class="view" id="v-ai">
   <div class="full">
     <div class="subtabs">
@@ -247,6 +440,13 @@
             <p>From the command line: <b>ASK why is NVDA down today?</b> or <b>BRIEF</b>.</p>
             <p>Answers are information, not financial advice. Check anything before you trade on it.</p>
           </div>
+        </div>
+        <div class="quick" id="aiQuick">
+          <button type="button" data-q="move">EXPLAIN THIS MOVE</button>
+          <button type="button" data-q="bullbear">BULL VS BEAR</button>
+          <button type="button" data-q="earnings">LATEST EARNINGS</button>
+          <button type="button" data-q="levels">LEVELS &amp; CATALYSTS</button>
+          <button type="button" data-q="compare">VS SECTOR &amp; S&amp;P</button>
         </div>
         <form class="ai-form" id="aiForm">
           <textarea id="aiInput" placeholder="Ask the analyst…  (Enter to send, Shift+Enter for a new line)"></textarea>
@@ -295,9 +495,16 @@
       <tr><td>MAIN · AI</td><td>Back to the main screen / open the analyst</td></tr>
       <tr><td>GP · FA · TA · ECO</td><td>Jump to chart, financials, technicals, calendar</td></tr>
       <tr><td>MAX</td><td>Chart fills the screen (Esc to exit)</td></tr>
+      <tr><td>ADD TSLA · DEL TSLA</td><td>Add to / remove from My list (monitor and ticker strip)</td></tr>
+      <tr><td>GRID · GRID 2 · GRID 4 NVDA SPY QQQ SMH</td><td>Multi-chart: one symbol on several timeframes, or several symbols</td></tr>
+      <tr><td>RES</td><td>Earnings calendar, analyst ratings, insider trades</td></tr>
+      <tr><td>PORT · BUY AAPL 10 @ 180 · SELL AAPL 5</td><td>Portfolio with live profit and loss</td></tr>
+      <tr><td>ALERT BTCUSD &gt; 70000</td><td>Price alert (notification, sound, optional AI explanation)</td></tr>
+      <tr><td>ALRT · CALC</td><td>Alerts list and position-size calculator</td></tr>
       <tr><td>/</td><td>Focus the command line</td></tr>
       <tr><td>Esc</td><td>Close this help</td></tr>
     </table>
+    <p style="color:var(--muted)">Install as an app: on a computer, click ⤓ INSTALL APP at the top right (Chrome or Edge). On iPhone, tap Share → Add to Home Screen in Safari. On Android, tap ⋮ → Install app in Chrome.</p>
     <p style="color:var(--muted)">News: without a key the panel shows TradingView's news feed. With a free Finnhub key it shows Finnhub headlines with a rough keyword tone tag (▲/▼). That tag is a word match, not analysis.</p>
   </div>
 </div>
@@ -361,6 +568,17 @@
   }
 
   let tvScript = null;
+  const tvWaiting = [];
+  function ensureTv(cb) {
+    if (window.TradingView) return cb();
+    tvWaiting.push(cb);
+    if (!tvScript) {
+      tvScript = document.createElement("script");
+      tvScript.src = "https://s3.tradingview.com/tv.js";
+      tvScript.onload = () => tvWaiting.splice(0).forEach((f) => f());
+      document.head.append(tvScript);
+    }
+  }
   function loadChart() {
     const make = () => new window.TradingView.widget({
       container_id: "w-chart", autosize: true, symbol, interval: "D", timezone: "exchange",
@@ -370,22 +588,16 @@
       overrides: { "paneProperties.background": "#000000", "paneProperties.backgroundType": "solid" },
     });
     document.getElementById("w-chart").replaceChildren();
-    if (window.TradingView) return make();
-    if (!tvScript) {
-      tvScript = document.createElement("script");
-      tvScript.src = "https://s3.tradingview.com/tv.js";
-      tvScript.onload = make;
-      document.head.append(tvScript);
-    }
+    ensureTv(make);
   }
 
   function loadStatic() {
     embed("tape", "ticker-tape", {
-      symbols: WATCH.flatMap((g) => g.symbols).map(([proName, title]) => ({ proName, title })),
+      symbols: watchGroups().flatMap((g) => g.symbols).map(([proName, title]) => ({ proName, title })),
       showSymbolLogo: false, displayMode: "adaptive", height: 46,
     });
     embed("w-quote", "market-quotes", {
-      symbolsGroups: WATCH.map((g) => ({ name: g.name, symbols: g.symbols.map(([name, displayName]) => ({ name, displayName })) })),
+      symbolsGroups: watchGroups().map((g) => ({ name: g.name, symbols: g.symbols.map(([name, displayName]) => ({ name, displayName })) })),
       showSymbolLogo: false,
     });
     embed("w-eco", "events", { importanceFilter: "0,1", countryFilter: "us,eu,gb,jp,cn,de,ca,au,ch" });
@@ -405,6 +617,7 @@
     }
     loadChart();
     loadNews();
+    afterSymbol();
   }
 
   // ── News ──
@@ -532,8 +745,39 @@
   }
   function run(raw) {
     const text = raw.trim();
-    const c = text.toUpperCase();
+    const c = text.toUpperCase().replace(/\s+/g, " ");
     if (!c) return;
+    let m;
+    if ((m = c.match(/^ADD (.+)$/))) return addWatch(m[1]);
+    if ((m = c.match(/^(?:DEL|REMOVE) (.+)$/))) return delWatch(m[1]);
+    if ((m = c.match(/^ALERT (\S+) ?(>=?|<=?|ABOVE|BELOW) ?([\d.,]+)$/))) {
+      const sym = normalize(m[1]), level = +m[3].replace(/,/g, "");
+      if (!sym || !(level > 0)) return toast("Alerts", "Try: ALERT BTCUSD > 70000");
+      addAlert(sym, /^(>|ABOVE)/.test(m[2]) ? ">" : "<", level);
+      return showView("tools");
+    }
+    if (["ALERT", "ALERTS", "ALRT", "CALC", "TOOLS", "RISK"].includes(c)) return showView("tools");
+    if ((m = c.match(/^GRID(?: ([24]))?((?: \S+)*)$/))) {
+      const syms = m[2].trim() ? m[2].trim().split(" ").map(normalize).filter(Boolean) : null;
+      if (syms) { gridMode = "sym"; gridSyms = syms; }
+      gridN = m[1] ? +m[1] : syms ? (syms.length <= 2 ? 2 : 4) : gridN;
+      return showView("grid");
+    }
+    if (["RES", "ERN", "ANR", "INS", "EE"].includes(c)) return showView("res");
+    if (["PORT", "PF", "PORTFOLIO"].includes(c)) return showView("port");
+    if ((m = c.match(/^BUY (\S+) ([\d.]+)(?: ?(?:@|AT) ?([\d.]+))?$/))) {
+      const sym = normalize(m[1]), qty = +m[2];
+      const price = m[3] ? +m[3] : px.get(sym)?.price;
+      if (!sym || !(qty > 0)) return toast("Portfolio", "Try: BUY AAPL 10 @ 180");
+      if (!isNum(price) || price <= 0) return toast("Portfolio", `No live price for ${bareTicker(sym)}. Add the price: BUY ${bareTicker(sym)} ${qty} @ 123.45`);
+      buy(sym, qty, price);
+      return showView("port");
+    }
+    if ((m = c.match(/^SELL (\S+) ([\d.]+|ALL)$/))) {
+      const sym = normalize(m[1]);
+      sell(sym, m[2] === "ALL" ? "ALL" : +m[2]);
+      return showView("port");
+    }
     if (/^ASK\s+/.test(c)) { showView("ai"); return ask(text.replace(/^ask\s+/i, "")); }
     if (c === "BRIEF") { showView("ai"); return brief(); }
     if (c === "AI" || c === "ASK") { showView("ai"); return document.getElementById("aiInput").focus(); }
@@ -571,6 +815,7 @@
     if (v === "heat") loadHeat();
     if (v === "eqs") loadEqs();
     if (v === "ai") document.getElementById("aiCtx").textContent = "context: " + symbol;
+    afterView(v);
   }
 
   function loadHeat() {
@@ -637,14 +882,18 @@
     } catch { return null; }
   }
 
-  async function snapshot() {
-    const lines = [`Time: ${new Date().toString()}`, `Symbol on screen: ${symbol} (${assetClass(symbol)})`];
+  async function snapshot(sym = symbol) {
+    const lines = [`Time: ${new Date().toString()}`, `Symbol in question: ${sym} (${assetClass(sym)})`];
+    const live = px.get(sym);
+    if (live && isNum(live.price)) lines.push(`Live price from the terminal feed: ${live.price}${isNum(live.prev) ? ` (previous close ${live.prev})` : ""}`);
+    const noteText = sym === symbol ? document.getElementById("w-note").innerText.trim() : "";
+    if (noteText && !/^Loading|^Add a free|^The score/.test(noteText)) lines.push("Terminal analyst note (rule-based):\n" + noteText);
     if (!finnhubKey()) {
       lines.push("No live quote or headlines: the user hasn't added a Finnhub key.");
       return lines.join("\n");
     }
-    const cls = assetClass(symbol);
-    const tk = bareTicker(symbol);
+    const cls = assetClass(sym);
+    const tk = bareTicker(sym);
     const to = new Date(), from = new Date(Date.now() - 3 * 864e5);
     const [q, news] = await Promise.all([
       cls === "stock" ? fh(`quote?symbol=${encodeURIComponent(tk)}`) : null,
@@ -704,7 +953,7 @@
       + (u.server_tool_use?.web_search_requests || 0) * SEARCH_PRICE;
   }
 
-  async function ask(question, label) {
+  async function ask(question, label, ctxSym) {
     question = (question || "").trim();
     if (!question || busy) return;
     busy = true;
@@ -717,7 +966,7 @@
     const turnStart = history.length;
     try {
       const api = await getClient();
-      const snap = await snapshot();
+      const snap = await snapshot(ctxSym || symbol);
       history.push({ role: "user", content: `TERMINAL SNAPSHOT\n${snap}\n\nQUESTION\n${question}` });
 
       let text = "", cost = 0, final;
@@ -794,7 +1043,7 @@
   }
 
   function brief() {
-    const names = WATCH.map((g) => `${g.name}: ${g.symbols.map(([, n]) => n).join(", ")}`).join("; ");
+    const names = watchGroups().map((g) => `${g.name}: ${g.symbols.map(([, n]) => n).join(", ")}`).join("; ");
     ask(`Write my morning briefing. Cover: (1) overnight and pre-market moves in my watchlist (${names}); (2) the top three market-moving headlines; (3) today's important economic releases and central-bank events with times; (4) what to watch today for ${symbol}. Use a heading per section and keep each section to a few bullets.`, "MORNING BRIEF");
   }
 
@@ -867,6 +1116,9 @@
     else if (keyInput.value.trim()) store.set("term.finnhub", keyInput.value.trim());
     syncKeyUI();
     loadNews();
+    refreshPrices(true);
+    loadNote();
+    renderLive();
   });
 
   // World clocks.
@@ -880,10 +1132,739 @@
   tick();
   setInterval(tick, 15_000);
 
+  // ───────────────────────── Upgrades: shared helpers ─────────────────────────
+  const $ = (id) => document.getElementById(id);
+  const loadJSON = (k, d) => { try { const v = JSON.parse(store.get(k) || "null"); return v == null ? d : v; } catch { return d; } };
+  const saveJSON = (k, v) => store.set(k, JSON.stringify(v));
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const isNum = (x) => typeof x === "number" && isFinite(x);
+  function fmt(n) {
+    if (!isNum(n)) return "—";
+    const a = Math.abs(n);
+    return a >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 2 }) : a >= 1 ? n.toFixed(2) : n.toPrecision(4);
+  }
+  const fmtPct = (x) => (isNum(x) ? (x >= 0 ? "+" : "") + x.toFixed(2) + "%" : "—");
+  const fmtUsd = (x) => (isNum(x) ? (x < 0 ? "−$" : "$") + Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—");
+  const fmtBig = (x) => (!isNum(x) ? "—" : Math.abs(x) >= 1e9 ? (x / 1e9).toFixed(2) + "B" : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(1) + "M" : Math.round(x).toLocaleString("en-US"));
+  const signCls = (x) => (!isNum(x) ? "muted" : x >= 0 ? "up" : "down");
+  const todayPlus = (days) => ymd(new Date(Date.now() + days * 864e5));
+  function td(text, cls) { const c = el("td", cls, text); return c; }
+  function th(text, right) { return el("th", right ? "r" : "", text); }
+  function msgIn(id, text) { $(id).replaceChildren(el("div", "msgline", text)); }
+
+  function toast(title, body, kind) {
+    const t = el("div", "toast" + (kind ? " " + kind : ""));
+    t.append(el("b", "", title));
+    if (body) t.append(el("div", "", body));
+    $("toasts").append(t);
+    setTimeout(() => t.remove(), kind === "alert" ? 15000 : 5000);
+  }
+
+  // ───────────────────────── Watchlist (My list) ─────────────────────────
+  let myList = loadJSON("term.watch", ["NASDAQ:AAPL", "NASDAQ:NVDA", "NASDAQ:TSLA", "BINANCE:BTCUSDT"]);
+  function watchGroups() {
+    const mine = myList.map((s) => [s, bareTicker(s)]);
+    return mine.length ? [{ name: "My list", symbols: mine }, ...WATCH] : WATCH;
+  }
+  function addWatch(raw) {
+    const have = new Set(myList.map(bareTicker));
+    const added = [];
+    for (const s of raw.split(/[\s,]+/).map(normalize)) if (s && !have.has(bareTicker(s))) { have.add(bareTicker(s)); added.push(s); }
+    if (!added.length) return toast("Watchlist", "Already on your list.");
+    myList = [...myList, ...added];
+    saveJSON("term.watch", myList);
+    loadStatic();
+    toast("Added to My list", added.join(", "));
+  }
+  function delWatch(raw) {
+    const keys = raw.split(/[\s,]+/).filter(Boolean).map((k) => k.toUpperCase());
+    const before = myList.length;
+    myList = myList.filter((s) => !keys.some((k) => s === normalize(k) || bareTicker(s) === k));
+    saveJSON("term.watch", myList);
+    loadStatic();
+    toast("My list", before === myList.length ? "Not on your list." : "Removed " + keys.join(", ") + ".");
+  }
+
+  // ───────────────────────── Live prices ─────────────────────────
+  // Crypto: Binance public market data (no key). Stocks: Finnhub quotes every 60 s.
+  // With a Finnhub key, a websocket adds real-time trades for stocks, crypto and FX.
+  const px = new Map();     // symbol → { price, prev, t, live }
+  const spark = new Map();  // symbol → recent prices for the sparkline
+  const BIN = "https://data-api.binance.vision/api/v3/";
+  function binSym(tv) {
+    if (assetClass(tv) !== "crypto") return null;
+    const t = bareTicker(tv);
+    return /USDT$|USDC$/.test(t) ? t : /USD$/.test(t) ? t + "T" : null;
+  }
+  function fhSym(tv) {
+    const c = assetClass(tv);
+    if (c === "stock") return bareTicker(tv);
+    if (c === "crypto") { const b = binSym(tv); return b ? "BINANCE:" + b : null; }
+    if (c === "forex") { const t = bareTicker(tv); return "OANDA:" + t.slice(0, 3) + "_" + t.slice(3); }
+    return null;
+  }
+  let alerts = loadJSON("term.alerts", []);
+  let portfolio = loadJSON("term.portfolio", []);
+  function watchedSyms() {
+    const s = new Set([symbol]);
+    alerts.forEach((a) => { if (!a.fired) s.add(a.sym); });
+    portfolio.forEach((p) => s.add(p.sym));
+    return [...s];
+  }
+  function setPx(tv, price, prev, live) {
+    const o = px.get(tv) || {};
+    const old = o.price;
+    if (isNum(price) && price > 0) {
+      o.price = price;
+      const a = spark.get(tv) || [];
+      a.push(price);
+      if (a.length > 240) a.shift();
+      spark.set(tv, a);
+    }
+    if (isNum(prev) && prev > 0) o.prev = prev;
+    o.t = Date.now();
+    if (live) o.live = true;
+    px.set(tv, o);
+    if (tv === symbol) renderLive(old);
+    checkAlerts(tv);
+    schedulePort();
+  }
+  async function pollCrypto() {
+    const pairs = [...new Set(watchedSyms().map(binSym).filter(Boolean))];
+    if (!pairs.length) return;
+    let rows = [];
+    try {
+      const r = await fetch(`${BIN}ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(pairs))}`);
+      if (!r.ok) throw new Error(String(r.status));
+      rows = await r.json();
+    } catch {
+      // One unknown pair fails the batch; fetch the rest one by one.
+      rows = (await Promise.all(pairs.map((p) => fetch(`${BIN}ticker/24hr?symbol=${p}`).then((r) => (r.ok ? r.json() : null)).catch(() => null)))).filter(Boolean);
+    }
+    const by = new Map(rows.map((x) => [x.symbol, x]));
+    for (const tv of watchedSyms()) {
+      const x = by.get(binSym(tv));
+      if (x) setPx(tv, +x.lastPrice, +x.prevClosePrice);
+    }
+  }
+  const lastStockPoll = new Map();
+  async function pollStocks(force) {
+    if (!finnhubKey()) return;
+    const now = Date.now();
+    const list = watchedSyms().filter((s) => assetClass(s) === "stock").slice(0, 25)
+      .filter((s) => force || now - (lastStockPoll.get(s) || 0) > 55_000);
+    for (const s of list) {
+      lastStockPoll.set(s, now);
+      const q = await fh(`quote?symbol=${encodeURIComponent(bareTicker(s))}`);
+      if (q && q.c) setPx(s, q.c, q.pc);
+    }
+  }
+  let ws = null, wsKey = null, wsSubs = new Set(), wsRetry = 5000;
+  function wsSync() {
+    const key = finnhubKey();
+    if (!key) { if (ws) { const w = ws; ws = null; w.close(); } return; }
+    if (!ws || wsKey !== key) return connectWs(key);
+    if (ws.readyState !== 1) return;
+    const want = new Set(watchedSyms().map(fhSym).filter(Boolean));
+    for (const s of want) if (!wsSubs.has(s)) { ws.send(JSON.stringify({ type: "subscribe", symbol: s })); wsSubs.add(s); }
+    for (const s of [...wsSubs]) if (!want.has(s)) { ws.send(JSON.stringify({ type: "unsubscribe", symbol: s })); wsSubs.delete(s); }
+  }
+  function connectWs(key) {
+    if (ws) { const w = ws; ws = null; try { w.close(); } catch {} }
+    wsKey = key;
+    wsSubs = new Set();
+    let me;
+    try { me = new WebSocket(`wss://ws.finnhub.io?token=${encodeURIComponent(key)}`); } catch { return; }
+    ws = me;
+    me.onopen = () => { wsRetry = 5000; wsSync(); };
+    me.onmessage = (ev) => {
+      let m;
+      try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.type !== "trade" || !Array.isArray(m.data)) return;
+      const last = new Map();
+      for (const t of m.data) last.set(t.s, t.p);
+      for (const [fs, p] of last) for (const tv of watchedSyms()) if (fhSym(tv) === fs) setPx(tv, p, null, true);
+    };
+    me.onclose = () => {
+      if (ws !== me) return;
+      ws = null;
+      setTimeout(() => { if (!ws) wsSync(); }, wsRetry);
+      wsRetry = Math.min(wsRetry * 2, 60_000);
+    };
+  }
+  function refreshPrices(force) { pollCrypto(); pollStocks(force); wsSync(); }
+  setInterval(() => { pollCrypto(); wsSync(); }, 10_000);
+  setInterval(() => pollStocks(false), 60_000);
+
+  // ───────────────────────── Live quote strip ─────────────────────────
+  let tickTimer = null;
+  function renderLive(old) {
+    const o = px.get(symbol);
+    const pxEl = $("livePx"), chg = $("liveChg"), src = $("liveSrc");
+    $("liveSym").textContent = bareTicker(symbol);
+    if (!o || !isNum(o.price)) {
+      pxEl.textContent = "—";
+      chg.textContent = "";
+      const c = assetClass(symbol);
+      src.textContent = c === "macro" ? "Live strip covers stocks, crypto and FX. The chart has live data for every symbol."
+        : c === "stock" && !finnhubKey() ? "Live price: add a free Finnhub key in the NEWS panel (crypto works without one)."
+        : c === "forex" && !finnhubKey() ? "Live FX price: add a free Finnhub key in the NEWS panel."
+        : "Waiting for the first price…";
+      drawSpark();
+      return;
+    }
+    pxEl.textContent = fmt(o.price);
+    if (isNum(old) && old !== o.price) {
+      pxEl.classList.remove("tick-up", "tick-down");
+      void pxEl.offsetWidth;
+      pxEl.classList.add(o.price > old ? "tick-up" : "tick-down");
+      clearTimeout(tickTimer);
+      tickTimer = setTimeout(() => pxEl.classList.remove("tick-up", "tick-down"), 700);
+    }
+    if (isNum(o.prev)) {
+      const d = o.price - o.prev, p = (d / o.prev) * 100;
+      chg.textContent = `${d >= 0 ? "+" : ""}${fmt(d)} (${fmtPct(p)})`;
+      chg.className = "chg " + signCls(d);
+    } else { chg.textContent = ""; }
+    const c = assetClass(symbol);
+    src.textContent = (o.live ? "● LIVE · Finnhub" : c === "crypto" ? "Binance · every 10 s" : "Finnhub · every 60 s") + (c === "crypto" ? " · change is 24 h" : "");
+    drawSpark();
+  }
+  function drawSpark() {
+    const cv = $("liveSpark");
+    const dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth || 160, h = cv.clientHeight || 26;
+    cv.width = w * dpr; cv.height = h * dpr;
+    const g = cv.getContext("2d");
+    g.scale(dpr, dpr);
+    g.clearRect(0, 0, w, h);
+    const a = spark.get(symbol) || [];
+    const prev = px.get(symbol)?.prev;
+    if (a.length < 2) { g.fillStyle = "#8c8c8c"; g.font = "10px monospace"; g.fillText("ticks since page opened", 2, h / 2 + 3); return; }
+    const all = isNum(prev) ? [...a, prev] : a;
+    const lo = Math.min(...all), hi = Math.max(...all), span = hi - lo || 1;
+    const y = (v) => h - 2 - ((v - lo) / span) * (h - 4);
+    if (isNum(prev)) { g.strokeStyle = "#444"; g.setLineDash([2, 3]); g.beginPath(); g.moveTo(0, y(prev)); g.lineTo(w, y(prev)); g.stroke(); g.setLineDash([]); }
+    g.strokeStyle = isNum(prev) && a[a.length - 1] < prev ? "#ff433d" : "#4af626";
+    g.lineWidth = 1.5;
+    g.beginPath();
+    a.forEach((v, i) => { const x = (i / (a.length - 1)) * (w - 4) + 2; i ? g.lineTo(x, y(v)) : g.moveTo(x, y(v)); });
+    g.stroke();
+  }
+
+  // ───────────────────────── Analyst note & score ─────────────────────────
+  function ema(arr, n) { const k = 2 / (n + 1); let e = arr[0]; return arr.map((v, i) => (e = i ? v * k + e * (1 - k) : v)); }
+  function rsi(arr, n = 14) {
+    let g = 0, l = 0;
+    for (let i = 1; i <= n && i < arr.length; i++) { const d = arr[i] - arr[i - 1]; d > 0 ? (g += d) : (l -= d); }
+    g /= n; l /= n;
+    for (let i = n + 1; i < arr.length; i++) { const d = arr[i] - arr[i - 1]; g = (g * (n - 1) + Math.max(d, 0)) / n; l = (l * (n - 1) + Math.max(-d, 0)) / n; }
+    return l === 0 ? 100 : 100 - 100 / (1 + g / l);
+  }
+  const scoreLabel = (s) => (s >= 70 ? ["STRONG", "up"] : s >= 55 ? ["POSITIVE", "up"] : s > 45 ? ["NEUTRAL", "amber"] : s > 30 ? ["NEGATIVE", "down"] : ["WEAK", "down"]);
+  function renderNote(score, lines, inputs) {
+    const body = $("w-note");
+    const [lbl, cls] = scoreLabel(score);
+    const head = el("div", "score");
+    head.append(el("span", "num " + cls, String(Math.round(score))), el("span", "muted", "/100"), el("span", "lbl " + cls, lbl));
+    const meter = el("div", "meter");
+    const fill = el("i");
+    fill.style.width = Math.max(0, Math.min(100, score)) + "%";
+    fill.style.background = cls === "up" ? "var(--up)" : cls === "down" ? "var(--down)" : "var(--amber)";
+    meter.append(fill);
+    const ul = el("ul", "note-list");
+    lines.filter(Boolean).forEach((t) => ul.append(el("li", "", t)));
+    body.replaceChildren(head, meter, ul, el("div", "fine", `Rule-based summary, not advice. Inputs: ${inputs}.`));
+  }
+  let noteSeq = 0;
+  async function loadNote() {
+    const seq = ++noteSeq, sym = symbol, c = assetClass(sym);
+    $("noteSrc").textContent = "";
+    msgIn("w-note", "Loading…");
+    try {
+      if (c === "crypto" && binSym(sym)) await noteCrypto(sym, seq);
+      else if (c === "stock" && finnhubKey()) await noteStock(sym, seq);
+      else if (c === "stock") msgIn("w-note", "Add a free Finnhub key in the NEWS panel to get the analyst note and score for stocks. Crypto works without a key.");
+      else msgIn("w-note", "The score covers US stocks (with a Finnhub key) and crypto. For this symbol, see TA · TECHNICAL SUMMARY below the chart.");
+    } catch {
+      if (seq === noteSeq) msgIn("w-note", "Couldn't load the data for the note. It will retry when you load a symbol again.");
+    }
+  }
+  async function noteCrypto(sym, seq) {
+    const pair = binSym(sym);
+    const get = (p, n) => fetch(`${BIN}klines?symbol=${p}&interval=1d&limit=${n}`).then((r) => (r.ok ? r.json() : Promise.reject(r.status)));
+    const [k, kb] = await Promise.all([get(pair, 400), pair === "BTCUSDT" ? null : get("BTCUSDT", 40).catch(() => null)]);
+    if (seq !== noteSeq) return;
+    const close = k.map((r) => +r[4]), high = k.map((r) => +r[2]), low = k.map((r) => +r[3]), vol = k.map((r) => +r[5]);
+    const last = close.at(-1), prev = close.at(-2);
+    const e20 = ema(close, 20).at(-1), e50 = ema(close, 50).at(-1), e200 = ema(close, 200).at(-1);
+    const m12 = ema(close, 12), m26 = ema(close, 26), macd = m12.map((v, i) => v - m26[i]), sig = ema(macd, 9), hist = macd.at(-1) - sig.at(-1);
+    const r = rsi(close);
+    const yr = close.length >= 365 ? 365 : close.length;
+    const hi = Math.max(...high.slice(-yr)), lo = Math.min(...low.slice(-yr)), pos = hi > lo ? (last - lo) / (hi - lo) : 0.5;
+    const ret30 = close.length > 30 ? (last / close.at(-31) - 1) * 100 : NaN;
+    let rel = ret30, relLbl = "30-day return";
+    if (kb && kb.length > 30) { const bc = kb.map((x) => +x[4]); rel = ret30 - (bc.at(-1) / bc.at(-31) - 1) * 100; relLbl = "30 days vs BTC"; }
+    const avgVol = vol.slice(-21, -1).reduce((a, b) => a + b, 0) / 20, volRatio = vol.at(-1) / avgVol;
+    const bull = last > e200 && e20 > e50, bear = last < e200 && e20 < e50;
+    const score = (last > e200 ? 20 : 0) + (e20 > e50 ? 15 : 0) + (last > e50 ? 10 : 0)
+      + (r >= 50 && r <= 70 ? 15 : r > 70 ? 8 : r >= 40 ? 5 : 0) + (hist > 0 ? 10 : 0)
+      + (isNum(rel) ? (rel > 0 ? 15 : 0) : 7.5) + pos * 15;
+    const day = (last / prev - 1) * 100;
+    $("noteSrc").textContent = "Binance daily";
+    renderNote(score, [
+      `${bareTicker(sym)} ${day >= 0 ? "up" : "down"} ${Math.abs(day).toFixed(2)}% today at ${fmt(last)}${isNum(volRatio) ? `, volume ${volRatio.toFixed(1)}× normal` : ""}.`,
+      bull ? "Uptrend: above the 200-day EMA, 20-day EMA over 50-day." : bear ? "Downtrend: below the 200-day EMA, 20-day EMA under 50-day." : "Mixed trend: the moving averages disagree.",
+      `RSI ${r.toFixed(0)}${r >= 70 ? " (overbought)" : r <= 30 ? " (oversold)" : r >= 50 ? " (firm)" : " (soft)"}; MACD ${hist > 0 ? "above" : "below"} its signal.`,
+      `At ${(pos * 100).toFixed(0)}% of the 1-year range (${fmt(lo)}–${fmt(hi)}), ${((hi - last) / hi * 100).toFixed(1)}% below the high.`,
+      isNum(rel) ? `${relLbl}: ${fmtPct(rel)}${pair === "BTCUSDT" ? "" : rel >= 0 ? " (leading)" : " (lagging)"}.` : "",
+    ], "EMA 20/50/200, RSI 14, MACD, 1-year range, 30-day return vs BTC");
+  }
+  async function noteStock(sym, seq) {
+    const tk = encodeURIComponent(bareTicker(sym));
+    const [mr, q, rec, ern] = await Promise.all([
+      fh(`stock/metric?symbol=${tk}&metric=all`), fh(`quote?symbol=${tk}`), fh(`stock/recommendation?symbol=${tk}`),
+      fh(`calendar/earnings?from=${todayPlus(0)}&to=${todayPlus(90)}&symbol=${tk}`),
+    ]);
+    if (seq !== noteSeq) return;
+    const m = (mr && mr.metric) || {};
+    if (!q || !q.c) return msgIn("w-note", "Finnhub has no quote for this symbol. The free plan covers US-listed stocks.");
+    const hi = m["52WeekHigh"], lo = m["52WeekLow"];
+    const r5 = m["5DayPriceReturnDaily"], r13 = m["13WeekPriceReturnDaily"], r26 = m["26WeekPriceReturnDaily"];
+    const rel13 = m["priceRelativeToS&P50013Week"], rel26 = m["priceRelativeToS&P50026Week"];
+    const pe = m.peTTM ?? m.peBasicExclExtraTTM ?? m.peExclExtraTTM, beta = m.beta;
+    const pos = isNum(hi) && isNum(lo) && hi > lo ? Math.max(0, Math.min(1, (q.c - lo) / (hi - lo))) : NaN;
+    const r0 = Array.isArray(rec) && rec[0];
+    const n = r0 ? r0.strongBuy + r0.buy + r0.hold + r0.sell + r0.strongSell : 0;
+    const buyShare = n ? (r0.strongBuy + r0.buy) / n : NaN;
+    const part = (cond, pts) => (cond === null ? pts / 2 : cond ? pts : 0);
+    const score = (isNum(pos) ? pos * 20 : 10)
+      + part(isNum(r13) ? r13 > 0 : null, 15) + part(isNum(r26) ? r26 > 0 : null, 10)
+      + part(isNum(rel13) ? rel13 > 0 : null, 15) + part(isNum(rel26) ? rel26 > 0 : null, 10)
+      + part(isNum(r5) ? r5 > 0 : null, 10) + (isNum(buyShare) ? buyShare * 20 : 10);
+    const next = (ern && ern.earningsCalendar || []).filter((e) => e.symbol === bareTicker(sym) && e.date >= todayPlus(0)).sort((a, b) => a.date.localeCompare(b.date))[0];
+    const days = next ? Math.round((new Date(next.date) - new Date(todayPlus(0))) / 864e5) : null;
+    $("noteSrc").textContent = "Finnhub";
+    renderNote(score, [
+      `${bareTicker(sym)} ${q.dp >= 0 ? "up" : "down"} ${Math.abs(q.dp).toFixed(2)}% today at ${fmt(q.c)}.`,
+      isNum(r13) ? `Momentum: ${fmtPct(r13)} over 13 weeks, ${fmtPct(r26)} over 26 weeks, ${fmtPct(r5)} over 5 days.` : "",
+      isNum(rel13) ? `Vs S&P 500: ${fmtPct(rel13)} over 13 weeks (${rel13 >= 0 ? "leading" : "lagging"}).` : "",
+      isNum(pos) ? `At ${(pos * 100).toFixed(0)}% of the 52-week range (${fmt(lo)}–${fmt(hi)}), ${((hi - q.c) / hi * 100).toFixed(1)}% below the high.` : "",
+      n ? `Analysts: ${Math.round(buyShare * 100)}% buy, ${Math.round(r0.hold / n * 100)}% hold, ${Math.round((r0.sell + r0.strongSell) / n * 100)}% sell (${n} analysts).` : "",
+      isNum(pe) || isNum(beta) ? `Valuation: P/E ${isNum(pe) ? pe.toFixed(1) : "—"}, beta ${isNum(beta) ? beta.toFixed(2) : "—"}.` : "",
+      next ? `Earnings ${next.date}${next.hour === "bmo" ? " before the open" : next.hour === "amc" ? " after the close" : ""} (in ${days} day${days === 1 ? "" : "s"}).` : "",
+    ], "52-week range, 5-day/13-week/26-week returns, strength vs S&P 500, analyst consensus");
+  }
+
+  // ───────────────────────── Research: earnings, ratings, insiders ─────────────────────────
+  const ernCache = new Map();
+  async function loadRes() {
+    $("resCtx").textContent = "symbol: " + symbol;
+    if (!finnhubKey()) {
+      ["ernBody", "anrBody", "insBody"].forEach((id) => msgIn(id, "Add a free Finnhub key in the NEWS panel on MAIN to load research data."));
+      return;
+    }
+    loadErn();
+    const stock = assetClass(symbol) === "stock";
+    $("anrSym").textContent = $("insSym").textContent = bareTicker(symbol);
+    if (!stock) {
+      msgIn("anrBody", "Analyst ratings cover company stocks. Load one, e.g. AAPL.");
+      msgIn("insBody", "Insider trades cover company stocks. Load one, e.g. AAPL.");
+      return;
+    }
+    loadAnr();
+    loadIns();
+  }
+  async function loadErn() {
+    const win = +$("ernWin").value;
+    $("ernRange").textContent = `${todayPlus(0)} → ${todayPlus(win)}`;
+    let data = ernCache.get(win);
+    if (!data) {
+      msgIn("ernBody", "Loading…");
+      const r = await fh(`calendar/earnings?from=${todayPlus(0)}&to=${todayPlus(win)}`);
+      data = (r && r.earningsCalendar) || [];
+      ernCache.set(win, data);
+    }
+    renderErn(data);
+  }
+  function renderErn(data) {
+    const mine = new Set([symbol, ...myList, ...portfolio.map((p) => p.sym)].map(bareTicker));
+    const f = $("ernFilter").value, q = $("ernSearch").value.trim().toUpperCase();
+    let rows = data.filter((e) => e.symbol && (!q || e.symbol.includes(q)));
+    if (!q && f === "mine") rows = rows.filter((e) => mine.has(e.symbol));
+    if (!q && f === "big") rows = [...rows].sort((a, b) => (b.revenueEstimate || 0) - (a.revenueEstimate || 0)).slice(0, 60);
+    rows = [...rows].sort((a, b) => a.date.localeCompare(b.date) || (b.revenueEstimate || 0) - (a.revenueEstimate || 0)).slice(0, 300);
+    if (!data.length) return msgIn("ernBody", "No earnings data returned. Check your Finnhub key.");
+    if (!rows.length) return msgIn("ernBody", f === "mine" && !q ? "None of your symbols report in this window. Set Show to Largest companies." : "No matches.");
+    const t = el("table", "t");
+    const hr = el("tr");
+    [["DATE"], ["WHEN"], ["TICKER"], ["EPS EST", 1], ["EPS ACT", 1], ["SURPRISE", 1], ["REV EST", 1]].forEach(([h, r]) => hr.append(th(h, r)));
+    t.append(hr);
+    for (const e of rows) {
+      const tr = el("tr", mine.has(e.symbol) ? "mine" : "");
+      const surp = isNum(e.epsActual) && isNum(e.epsEstimate) && e.epsEstimate !== 0 ? ((e.epsActual - e.epsEstimate) / Math.abs(e.epsEstimate)) * 100 : NaN;
+      const d = new Date(e.date + "T12:00:00");
+      tr.append(
+        td(d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })),
+        td(e.hour === "bmo" ? "pre-mkt" : e.hour === "amc" ? "after" : "—", "muted"),
+        td(e.symbol),
+        td(isNum(e.epsEstimate) ? e.epsEstimate.toFixed(2) : "—", "r"),
+        td(isNum(e.epsActual) ? e.epsActual.toFixed(2) : "—", "r"),
+        td(fmtPct(surp), "r " + signCls(surp)),
+        td(fmtBig(e.revenueEstimate), "r"),
+      );
+      tr.style.cursor = "pointer";
+      tr.title = "Load " + e.symbol;
+      tr.addEventListener("click", () => run(e.symbol));
+      t.append(tr);
+    }
+    $("ernBody").replaceChildren(t);
+  }
+  ["ernFilter", "ernSearch"].forEach((id) => $(id).addEventListener("input", () => { const d = ernCache.get(+$("ernWin").value); if (d) renderErn(d); }));
+  $("ernWin").addEventListener("change", loadErn);
+
+  async function loadAnr() {
+    msgIn("anrBody", "Loading…");
+    const tk = encodeURIComponent(bareTicker(symbol));
+    const [rec, pt] = await Promise.all([fh(`stock/recommendation?symbol=${tk}`), fh(`stock/price-target?symbol=${tk}`)]);
+    const body = $("anrBody");
+    body.replaceChildren();
+    if (!Array.isArray(rec) || !rec.length) { msgIn("anrBody", "No analyst ratings for this symbol."); return; }
+    const r0 = rec[0];
+    const parts = [["Strong buy", r0.strongBuy, "#00a651"], ["Buy", r0.buy, "#4af626"], ["Hold", r0.hold, "#8c8c8c"], ["Sell", r0.sell, "#ff7a6e"], ["Strong sell", r0.strongSell, "#ff433d"]];
+    const n = parts.reduce((a, p) => a + p[1], 0) || 1;
+    const bar = el("div", "bar3");
+    parts.forEach(([name, v, col]) => { const s = el("span"); s.style.width = (v / n) * 100 + "%"; s.style.background = col; s.title = `${name}: ${v}`; bar.append(s); });
+    const buy = ((r0.strongBuy + r0.buy) / n) * 100, sell = ((r0.sell + r0.strongSell) / n) * 100;
+    body.append(el("div", "", `Consensus for ${r0.period}: ${Math.round(buy)}% buy · ${Math.round((r0.hold / n) * 100)}% hold · ${Math.round(sell)}% sell (${n} analysts)`), bar);
+    const t = el("table", "t");
+    const hr = el("tr");
+    ["MONTH", "S.BUY", "BUY", "HOLD", "SELL", "S.SELL"].forEach((h, i) => hr.append(th(h, i > 0)));
+    t.append(hr);
+    rec.slice(0, 6).forEach((r) => {
+      const tr = el("tr");
+      tr.append(td(r.period.slice(0, 7)), td(String(r.strongBuy), "r"), td(String(r.buy), "r"), td(String(r.hold), "r"), td(String(r.sell), "r"), td(String(r.strongSell), "r"));
+      t.append(tr);
+    });
+    body.append(t);
+    const ptBox = el("div", "fine");
+    if (pt && isNum(pt.targetMean) && pt.targetMean > 0) {
+      const live = px.get(symbol)?.price;
+      ptBox.textContent = `Price target: mean ${fmt(pt.targetMean)}, median ${fmt(pt.targetMedian)}, range ${fmt(pt.targetLow)}–${fmt(pt.targetHigh)}${isNum(live) ? ` (${fmtPct((pt.targetMean / live - 1) * 100)} from now)` : ""}. Updated ${String(pt.lastUpdated || "").slice(0, 10)}.`;
+      ptBox.className = "";
+      ptBox.style.marginTop = "8px";
+    } else {
+      ptBox.textContent = "Price targets aren't available on your Finnhub plan (they need a paid plan).";
+    }
+    body.append(ptBox);
+  }
+
+  const INS_CODE = { P: ["BUY", "buy"], S: ["SELL", "sell"], M: ["OPTION EX.", "other"], A: ["AWARD", "other"], G: ["GIFT", "other"], F: ["TAX", "other"], D: ["DISPOSAL", "other"], C: ["CONVERSION", "other"] };
+  async function loadIns() {
+    msgIn("insBody", "Loading…");
+    const r = await fh(`stock/insider-transactions?symbol=${encodeURIComponent(bareTicker(symbol))}`);
+    const data = ((r && r.data) || []).sort((a, b) => (b.transactionDate || "").localeCompare(a.transactionDate || ""));
+    if (!data.length) return msgIn("insBody", "No insider trades reported for this symbol.");
+    const since = todayPlus(-90);
+    let buys = 0, sells = 0;
+    data.filter((d) => d.transactionDate >= since).forEach((d) => {
+      const v = Math.abs(d.change || 0) * (d.transactionPrice || 0);
+      if (d.transactionCode === "P") buys += v; else if (d.transactionCode === "S") sells += v;
+    });
+    const sum = el("div", "", `Last 90 days, open-market: bought ${fmtUsd(buys)} · sold ${fmtUsd(sells)}`);
+    sum.style.marginBottom = "6px";
+    const t = el("table", "t");
+    const hr = el("tr");
+    [["DATE"], ["INSIDER"], ["TYPE"], ["SHARES", 1], ["PRICE", 1], ["VALUE", 1]].forEach(([h, rr]) => hr.append(th(h, rr)));
+    t.append(hr);
+    data.slice(0, 40).forEach((d) => {
+      const [lbl, cls] = INS_CODE[d.transactionCode] || [d.transactionCode || "—", "other"];
+      const tr = el("tr");
+      const type = el("td");
+      type.append(el("span", "chip " + cls, lbl));
+      const name = td(d.name || "—", "wrap");
+      tr.append(td(d.transactionDate || "—"), name, type,
+        td((d.change > 0 ? "+" : "") + (d.change || 0).toLocaleString("en-US"), "r " + signCls(d.change)),
+        td(d.transactionPrice ? fmt(d.transactionPrice) : "—", "r"),
+        td(d.transactionPrice ? fmtUsd(Math.abs(d.change || 0) * d.transactionPrice) : "—", "r"));
+      t.append(tr);
+    });
+    $("insBody").replaceChildren(sum, t, el("div", "fine", "Open-market buys (P) and sells (S) carry the most signal. Awards, option exercises and tax withholding are routine."));
+  }
+
+  // ───────────────────────── Portfolio ─────────────────────────
+  function savePort() { saveJSON("term.portfolio", portfolio); refreshPrices(true); renderPort(); }
+  function setPosition(sym, qty, cost) {
+    const i = portfolio.findIndex((p) => p.sym === sym);
+    if (qty <= 0) { if (i >= 0) portfolio.splice(i, 1); }
+    else if (i >= 0) portfolio[i] = { sym, qty, cost };
+    else portfolio.push({ sym, qty, cost });
+    savePort();
+  }
+  function buy(sym, qty, price) {
+    const p = portfolio.find((x) => x.sym === sym);
+    if (p) setPosition(sym, p.qty + qty, (p.qty * p.cost + qty * price) / (p.qty + qty));
+    else setPosition(sym, qty, price);
+    toast("Portfolio", `Bought ${qty} ${bareTicker(sym)} @ ${fmt(price)}`);
+  }
+  function sell(sym, qty) {
+    const p = portfolio.find((x) => x.sym === sym);
+    if (!p) return toast("Portfolio", `You don't hold ${bareTicker(sym)}.`);
+    const q = qty === "ALL" ? p.qty : Math.min(p.qty, qty);
+    setPosition(sym, p.qty - q, p.cost);
+    toast("Portfolio", `Sold ${q} ${bareTicker(sym)}`);
+  }
+  let portTimer = null;
+  function schedulePort() { if (view === "port" && !portTimer) portTimer = setTimeout(() => { portTimer = null; renderPort(); }, 400); }
+  function renderPort() {
+    if (!portfolio.length) {
+      msgIn("portBody", "No positions yet. Add one above, or type BUY AAPL 10 @ 180 in the command line. Prices: crypto from Binance (no key), US stocks from Finnhub (free key).");
+      $("portStatus").textContent = "";
+      return;
+    }
+    let tv = 0, tc = 0, tday = 0, priced = 0;
+    const rows = portfolio.map((p) => {
+      const o = px.get(p.sym) || {};
+      const val = isNum(o.price) ? p.qty * o.price : NaN;
+      const day = isNum(o.price) && isNum(o.prev) ? p.qty * (o.price - o.prev) : NaN;
+      if (isNum(val)) { tv += val; tc += p.qty * p.cost; priced++; }
+      if (isNum(day)) tday += day;
+      return { p, o, val, day };
+    });
+    const t = el("table", "t");
+    const hr = el("tr");
+    [["SYMBOL"], ["QTY", 1], ["AVG COST", 1], ["LAST", 1], ["VALUE", 1], ["P&L", 1], ["P&L %", 1], ["TODAY", 1], ["WEIGHT", 1], [""]].forEach(([h, r]) => hr.append(th(h, r)));
+    t.append(hr);
+    for (const { p, o, val, day } of rows) {
+      const pl = isNum(val) ? val - p.qty * p.cost : NaN, plp = isNum(pl) ? (pl / (p.qty * p.cost)) * 100 : NaN;
+      const tr = el("tr");
+      const s = td(bareTicker(p.sym), "amber");
+      s.style.cursor = "pointer"; s.title = "Load " + p.sym;
+      s.addEventListener("click", () => run(p.sym));
+      const x = el("button", "x", "✕");
+      x.type = "button"; x.title = "Remove position";
+      x.addEventListener("click", () => setPosition(p.sym, 0, 0));
+      const xc = el("td"); xc.append(x);
+      tr.append(s, td(p.qty.toLocaleString("en-US", { maximumFractionDigits: 8 }), "r"), td(fmt(p.cost), "r"), td(isNum(o.price) ? fmt(o.price) : "—", "r"),
+        td(fmtUsd(val), "r"), td(fmtUsd(pl), "r " + signCls(pl)), td(fmtPct(plp), "r " + signCls(plp)), td(fmtUsd(day), "r " + signCls(day)),
+        td(isNum(val) && tv ? ((val / tv) * 100).toFixed(1) + "%" : "—", "r"), xc);
+      t.append(tr);
+    }
+    const tot = el("tr", "total");
+    const tpl = tv - tc;
+    tot.append(td("TOTAL"), td(""), td(""), td(""), td(fmtUsd(tv), "r"), td(fmtUsd(tpl), "r " + signCls(tpl)), td(fmtPct(tc ? (tpl / tc) * 100 : NaN), "r " + signCls(tpl)), td(fmtUsd(tday), "r " + signCls(tday)), td("100%", "r"), td(""));
+    t.append(tot);
+    const missing = rows.filter((r) => !isNum(r.val)).map((r) => bareTicker(r.p.sym));
+    $("portBody").replaceChildren(t, el("div", "fine", (missing.length ? `No price yet for ${missing.join(", ")} (US stocks need a Finnhub key; FX needs the key's live feed; indices and commodities aren't supported), so totals leave them out. ` : "") + "Values in USD. Crypto 'today' is the 24-hour change."));
+    $("portStatus").textContent = `${priced}/${portfolio.length} priced · updated ${new Date().toLocaleTimeString()}`;
+  }
+  $("portForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const sym = normalize($("pfSym").value), qty = +$("pfQty").value, cost = +$("pfCost").value;
+    if (!sym || !(qty > 0) || !(cost > 0)) return toast("Portfolio", "Enter a symbol, a quantity and a cost above zero.");
+    setPosition(sym, qty, cost);
+    $("portForm").reset();
+  });
+
+  // ───────────────────────── Price alerts ─────────────────────────
+  function saveAlerts() { saveJSON("term.alerts", alerts); refreshPrices(true); renderAlerts(); }
+  function addAlert(sym, op, level) {
+    alerts.push({ id: Date.now() + Math.random(), sym, op, level, created: Date.now(), fired: false });
+    saveAlerts();
+    toast("Alert set", `${bareTicker(sym)} ${op === ">" ? "above" : "below"} ${fmt(level)}. Checks while this page is open.`);
+    if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().then(renderAlerts);
+    if (!binSym(sym) && !finnhubKey()) toast("No price feed for this alert", "Add a free Finnhub key in the NEWS panel. Crypto alerts work without one.");
+  }
+  let audio = null;
+  function beep() {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.18].forEach((d) => { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = 880; g.gain.value = 0.08; o.connect(g).connect(audio.destination); o.start(audio.currentTime + d); o.stop(audio.currentTime + d + 0.12); });
+    } catch {}
+  }
+  function notify(title, body) {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const opts = { body, icon: "icon-192.png", tag: title };
+    try { new Notification(title, opts); }
+    catch { navigator.serviceWorker?.ready.then((r) => r.showNotification(title, opts)).catch(() => {}); }
+  }
+  function checkAlerts(tv) {
+    const price = px.get(tv)?.price;
+    if (!isNum(price)) return;
+    for (const a of alerts) {
+      if (a.fired || a.sym !== tv) continue;
+      if ((a.op === ">" && price >= a.level) || (a.op === "<" && price <= a.level)) fireAlert(a, price);
+    }
+  }
+  function fireAlert(a, price) {
+    a.fired = true; a.firedAt = Date.now(); a.firedPx = price;
+    saveJSON("term.alerts", alerts);
+    const title = `ALERT · ${bareTicker(a.sym)} ${a.op === ">" ? "above" : "below"} ${fmt(a.level)}`;
+    const body = `Now ${fmt(price)} at ${new Date().toLocaleTimeString()}`;
+    toast(title, body, "alert");
+    notify(title, body);
+    beep();
+    const t0 = document.title;
+    document.title = "🔔 " + title;
+    setTimeout(() => { document.title = t0; }, 10000);
+    renderAlerts();
+    if ($("alAi").checked) explainAlert(a, price, 0);
+  }
+  function explainAlert(a, price, tries) {
+    if (!store.get("term.anthropic")) return toast("AI explainer", "Add your Anthropic key in AI · ANALYST to get alert explanations.");
+    if (busy) { if (tries < 24) setTimeout(() => explainAlert(a, price, tries + 1), 5000); return; }
+    toast("AI explainer", `Looking into ${bareTicker(a.sym)}. See AI · ANALYST.`);
+    ask(`My price alert just fired: ${a.sym} moved ${a.op === ">" ? "above" : "below"} ${a.level} and is now ${price}. In under 150 words, explain why it's moving (search the web for today's news), whether the move is company-specific or market-wide, and the next levels or events to watch.`, `ALERT · ${bareTicker(a.sym)} ${a.op} ${fmt(a.level)}`, a.sym);
+  }
+  function renderAlerts() {
+    const perm = "Notification" in window ? Notification.permission : "unsupported";
+    $("notifBtn").textContent = perm === "granted" ? "NOTIFICATIONS ON" : perm === "denied" ? "NOTIFICATIONS BLOCKED" : perm === "unsupported" ? "NO NOTIFICATIONS" : "ENABLE NOTIFICATIONS";
+    $("notifBtn").disabled = perm !== "default";
+    $("alrtStatus").textContent = "checks while this page is open";
+    if (!alerts.length) return msgIn("alertBody", "No alerts yet. Crypto alerts work with no key. Stock and FX alerts need a free Finnhub key (NEWS panel on MAIN).");
+    const t = el("table", "t");
+    const hr = el("tr");
+    [["SYMBOL"], ["WHEN"], ["LEVEL", 1], ["NOW", 1], ["DISTANCE", 1], ["STATUS"], [""]].forEach(([h, r]) => hr.append(th(h, r)));
+    t.append(hr);
+    [...alerts].sort((a, b) => a.fired - b.fired || b.created - a.created).forEach((a) => {
+      const now = px.get(a.sym)?.price;
+      const dist = isNum(now) ? ((a.level - now) / now) * 100 : NaN;
+      const tr = el("tr");
+      const x = el("button", "x", "✕");
+      x.type = "button"; x.title = "Delete alert";
+      x.addEventListener("click", () => { alerts = alerts.filter((y) => y.id !== a.id); saveAlerts(); });
+      const xc = el("td"); xc.append(x);
+      const s = td(bareTicker(a.sym), "amber");
+      s.style.cursor = "pointer"; s.addEventListener("click", () => run(a.sym));
+      tr.append(s, td(a.op === ">" ? "above" : "below"), td(fmt(a.level), "r"), td(isNum(now) ? fmt(now) : "—", "r"), td(a.fired ? "—" : fmtPct(dist), "r"),
+        td(a.fired ? `FIRED ${new Date(a.firedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} @ ${fmt(a.firedPx)}` : isNum(now) ? "WAITING" : "NO PRICE YET", a.fired ? "up" : "muted"), xc);
+      t.append(tr);
+    });
+    const clear = el("button", "tbtn", "CLEAR FIRED");
+    clear.type = "button";
+    clear.style.marginTop = "8px";
+    clear.addEventListener("click", () => { alerts = alerts.filter((a) => !a.fired); saveAlerts(); });
+    $("alertBody").replaceChildren(t, clear);
+  }
+  $("alertForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const sym = normalize($("alSym").value), level = +$("alPx").value;
+    if (!sym || !(level > 0)) return toast("Alerts", "Enter a symbol and a price above zero.");
+    addAlert(sym, $("alOp").value, level);
+    $("alertForm").reset();
+  });
+  $("notifBtn").addEventListener("click", () => { if ("Notification" in window) Notification.requestPermission().then(renderAlerts); });
+  $("alAi").checked = store.get("term.alertAi") === "1";
+  $("alAi").addEventListener("change", () => store.set("term.alertAi", $("alAi").checked ? "1" : null));
+  setInterval(() => { if (view === "tools") renderAlerts(); }, 5000);
+
+  // ───────────────────────── Position-size calculator ─────────────────────────
+  ["cAcct", "cRisk"].forEach((id) => { const v = store.get("term." + id); if (v) $(id).value = v; });
+  function calc() {
+    const acct = +$("cAcct").value, risk = +$("cRisk").value, entry = +$("cEntry").value, stop = +$("cStop").value, target = +$("cTarget").value;
+    store.set("term.cAcct", $("cAcct").value); store.set("term.cRisk", $("cRisk").value);
+    const out = (id, t, cls) => { $(id).textContent = t; $(id).className = "out" + (id === "oSize" ? " big" : "") + (cls ? " " + cls : ""); };
+    const ids = ["oSize", "oValue", "oRisk", "oPer", "oRR", "oProfit"];
+    if (!(acct > 0 && risk > 0 && entry > 0 && stop > 0)) return ids.forEach((id) => out(id, "—"));
+    const per = Math.abs(entry - stop);
+    if (per === 0) { ids.forEach((id) => out(id, "—")); return out("oSize", "Stop must differ from entry", "down"); }
+    const long = entry > stop, riskUsd = (acct * risk) / 100;
+    let size = riskUsd / per;
+    size = $("cFrac").checked ? Math.floor(size * 1e6) / 1e6 : Math.floor(size);
+    const value = size * entry;
+    out("oSize", `${size.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${long ? "long" : "short"}`);
+    out("oValue", `${fmtUsd(value)} (${((value / acct) * 100).toFixed(1)}% of account)`, value > acct ? "down" : "");
+    out("oRisk", `${fmtUsd(size * per)} (${risk}% target)`);
+    out("oPer", fmt(per));
+    if (target > 0) {
+      const reward = long ? target - entry : entry - target;
+      out("oRR", reward > 0 ? `${(reward / per).toFixed(2)} : 1` : "Target is on the wrong side of entry", reward > 0 ? "" : "down");
+      out("oProfit", reward > 0 ? fmtUsd(size * reward) : "—", reward > 0 ? "up" : "");
+    } else { out("oRR", "—"); out("oProfit", "—"); }
+  }
+  ["cAcct", "cRisk", "cEntry", "cStop", "cTarget", "cFrac"].forEach((id) => $(id).addEventListener("input", calc));
+  $("cLive").addEventListener("click", () => {
+    const p = px.get(symbol)?.price;
+    if (!isNum(p)) return toast("Calculator", `No live price for ${bareTicker(symbol)} yet.`);
+    $("cEntry").value = p;
+    $("cFrac").checked = assetClass(symbol) === "crypto";
+    calc();
+  });
+
+  // ───────────────────────── Multi-chart grid ─────────────────────────
+  let gridN = 4, gridMode = "tf", gridSyms = null, gridLoaded = "";
+  const TF = { 4: [["5", "5 MIN"], ["60", "1 HOUR"], ["D", "DAILY"], ["W", "WEEKLY"]], 2: [["60", "1 HOUR"], ["D", "DAILY"]] };
+  function loadGrid() {
+    document.querySelectorAll("#gridTabs button[data-n]").forEach((b) => b.classList.toggle("on", +b.dataset.n === gridN));
+    document.querySelectorAll("#gridTabs button[data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === gridMode));
+    const syms = (gridSyms || [symbol, "AMEX:SPY", "NASDAQ:QQQ", "TVC:DXY"]);
+    const cells = Array.from({ length: gridN }, (_, i) => gridMode === "tf"
+      ? { sym: symbol, iv: TF[gridN][i][0], cap: `${bareTicker(symbol)} · ${TF[gridN][i][1]}` }
+      : { sym: syms[i] || syms[0], iv: "D", cap: `${bareTicker(syms[i] || syms[0])} · DAILY` });
+    const key = JSON.stringify(cells);
+    if (key === gridLoaded) return;
+    gridLoaded = key;
+    const host = $("gridCharts");
+    host.className = "gridcharts n" + gridN;
+    host.replaceChildren(...cells.map((c, i) => {
+      const d = el("div");
+      const inner = el("div", "cell");
+      inner.id = "gc" + i;
+      d.append(inner, el("span", "cap", c.cap));
+      return d;
+    }));
+    ensureTv(() => cells.forEach((c, i) => new window.TradingView.widget({
+      container_id: "gc" + i, autosize: true, symbol: c.sym, interval: c.iv, timezone: "exchange", theme: "dark", style: "1", locale: "en",
+      toolbar_bg: "#000000", enable_publishing: false, allow_symbol_change: true, hide_side_toolbar: true,
+      overrides: { "paneProperties.background": "#000000", "paneProperties.backgroundType": "solid" },
+    })));
+  }
+  document.querySelectorAll("#gridTabs button[data-n]").forEach((b) => b.addEventListener("click", () => { gridN = +b.dataset.n; loadGrid(); }));
+  document.querySelectorAll("#gridTabs button[data-mode]").forEach((b) => b.addEventListener("click", () => { gridMode = b.dataset.mode; loadGrid(); }));
+
+  // ───────────────────────── Quick AI questions ─────────────────────────
+  const QUICK = {
+    move: (s) => `Explain today's move in ${s}: what happened, why, and whether it's specific to ${s} or market-wide.`,
+    bullbear: (s) => `Give me the bull case and the bear case for ${s} right now: three points each, with numbers, then what would change the picture.`,
+    earnings: (s) => `Summarise ${s}'s most recent earnings report: results vs expectations, guidance, and how the stock reacted.`,
+    levels: (s) => `What are the key price levels, upcoming catalysts and main risks for ${s} over the next few weeks?`,
+    compare: (s) => `How is ${s} doing against its sector and the S&P 500 this month, and why?`,
+  };
+  document.querySelectorAll("#aiQuick button").forEach((b) => b.addEventListener("click", () => ask(QUICK[b.dataset.q](bareTicker(symbol)), `${b.textContent} · ${bareTicker(symbol)}`)));
+
+  // ───────────────────────── Install as an app ─────────────────────────
+  if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+  let installEvt = null;
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; $("installBtn").hidden = false; });
+  $("installBtn").addEventListener("click", async () => {
+    if (!installEvt) return;
+    installEvt.prompt();
+    await installEvt.userChoice.catch(() => {});
+    installEvt = null;
+    $("installBtn").hidden = true;
+  });
+  window.addEventListener("appinstalled", () => toast("Installed", "Open Terminal from your home screen or app list."));
+
+  // Hooks into symbol changes and views.
+  function afterSymbol() {
+    renderLive();
+    loadNote();
+    refreshPrices(true);
+    if (view === "res") loadRes();
+    if (view === "grid") loadGrid();
+  }
+  function afterView(v) {
+    if (v === "grid") loadGrid();
+    if (v === "res") loadRes();
+    if (v === "port") { renderPort(); refreshPrices(true); }
+    if (v === "tools") { renderAlerts(); calc(); }
+  }
+
   syncKeyUI();
   loadStatic();
   loadSymbol();
 })();
 </script>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 </body>
 </html>
