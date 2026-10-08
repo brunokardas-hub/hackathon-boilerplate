@@ -1,6 +1,7 @@
 // This Pine Script® code is subject to the terms of the MIT License (see LICENSE).
-// Bloomberg-style market terminal for TradingView: quote, ranges, performance,
-// technicals and a multi-asset monitor in one amber-on-black panel.
+// Bloomberg-style market terminal for TradingView: quote, analyst note and score,
+// performance, technicals, fundamentals, macro and a monitor in one amber-on-black
+// panel, plus a second MARKET panel with a heatmap and a screener.
 //@version=6
 indicator("Terminal — Bloomberg-Style Dashboard", shorttitle = "TERMINAL", overlay = true)
 
@@ -13,6 +14,18 @@ showTech  = input.bool(true, "Show TECHNICALS", group = G_LAY)
 showFund  = input.bool(true, "Show FUNDAMENTALS (stocks only)", group = G_LAY)
 showMacro = input.bool(true, "Show MACRO", group = G_LAY)
 showWatch = input.bool(true, "Show MONITOR", group = G_LAY)
+showNote  = input.bool(true, "Show ANALYST NOTE", group = G_LAY)
+
+const string G_MKT = "Market panel (heatmap + screener)"
+showMkt   = input.bool(true, "Show MARKET panel", group = G_MKT)
+mktPos    = input.string("Bottom Left", "Market panel position", options = ["Top Right", "Top Left", "Middle Right", "Bottom Right", "Bottom Left"], group = G_MKT)
+universe  = input.string("US Sectors", "Universe", options = ["US Sectors", "US Mega Caps", "Crypto", "Global Macro", "Custom"], group = G_MKT)
+customLst = input.string("AAPL,MSFT,NVDA,AMZN,GOOGL,META,TSLA,AVGO,JPM,LLY,V,XOM", "Custom list (up to 12, comma-separated)", group = G_MKT)
+heatScale = input.float(3.0, "Heatmap full colour at ±%", minval = 0.1, step = 0.5, group = G_MKT)
+showScr   = input.bool(true, "Show SCREENER", group = G_MKT)
+scrSort   = input.string("% Change", "Sort by", options = ["% Change", "RSI", "Relative volume"], group = G_MKT)
+scrFilter = input.string("All", "Filter", options = ["All", "Gainers", "Losers", "Oversold (RSI < 30)", "Overbought (RSI > 70)", "Unusual volume (RVOL > 1.5)"], group = G_MKT)
+scrRows   = input.int(8, "Max screener rows", minval = 1, maxval = 12, group = G_MKT)
 
 const string G_BEN = "Benchmark"
 benchSym = input.symbol("AMEX:SPY", "Benchmark (relative strength)", group = G_BEN)
@@ -127,6 +140,49 @@ f_eco(string code, string tf) => request.security("ECONOMICS:" + macroCC + code,
 [ecoUnem, ecoUnemP] = f_eco("UR", "1M")
 [ecoGdp, ecoGdpP]   = f_eco("GDPQQ", "3M")
 
+// Market universe: 12 symbols for the heatmap and screener, one daily request each
+// returning [close, previous close, RSI14, volume ÷ 20-day average volume].
+var UNI_SECT = array.from("AMEX:XLK", "AMEX:XLF", "AMEX:XLV", "AMEX:XLY", "AMEX:XLC", "AMEX:XLI", "AMEX:XLP", "AMEX:XLE", "AMEX:XLU", "AMEX:XLB", "AMEX:XLRE", "AMEX:SPY")
+var UNI_MEGA = array.from("NASDAQ:AAPL", "NASDAQ:MSFT", "NASDAQ:NVDA", "NASDAQ:AMZN", "NASDAQ:GOOGL", "NASDAQ:META", "NASDAQ:TSLA", "NASDAQ:AVGO", "NYSE:BRK.B", "NYSE:JPM", "NYSE:LLY", "NYSE:V")
+var UNI_CRYP = array.from("BINANCE:BTCUSDT", "BINANCE:ETHUSDT", "BINANCE:SOLUSDT", "BINANCE:BNBUSDT", "BINANCE:XRPUSDT", "BINANCE:DOGEUSDT", "BINANCE:ADAUSDT", "BINANCE:AVAXUSDT", "BINANCE:LINKUSDT", "BINANCE:DOTUSDT", "BINANCE:TRXUSDT", "BINANCE:LTCUSDT")
+var UNI_MACR = array.from("AMEX:SPY", "NASDAQ:QQQ", "AMEX:IWM", "AMEX:EFA", "AMEX:EEM", "TVC:DXY", "TVC:US10Y", "TVC:GOLD", "TVC:USOIL", "FX:EURUSD", "FX:USDJPY", "BITSTAMP:BTCUSD")
+var UNI_CUST = str.split(str.replace_all(str.upper(customLst), " ", ""), ",")
+
+f_uni(int i) =>
+    switch universe
+        "US Mega Caps" => array.get(UNI_MEGA, i)
+        "Crypto"       => array.get(UNI_CRYP, i)
+        "Global Macro" => array.get(UNI_MACR, i)
+        "Custom"       => i < array.size(UNI_CUST) ? array.get(UNI_CUST, i) : ""
+        => array.get(UNI_SECT, i)
+
+// Empty custom slots request the chart symbol and are skipped when drawing.
+f_mkt(string s) => request.security(s == "" ? syminfo.tickerid : s, "D", [close, close[1], ta.rsi(close, 14), volume / ta.sma(volume, 20)], ignore_invalid_symbol = true)
+string u0 = f_uni(0)
+string u1 = f_uni(1)
+string u2 = f_uni(2)
+string u3 = f_uni(3)
+string u4 = f_uni(4)
+string u5 = f_uni(5)
+string u6 = f_uni(6)
+string u7 = f_uni(7)
+string u8 = f_uni(8)
+string u9 = f_uni(9)
+string u10 = f_uni(10)
+string u11 = f_uni(11)
+[mc0, mp0, mr0, mv0] = f_mkt(u0)
+[mc1, mp1, mr1, mv1] = f_mkt(u1)
+[mc2, mp2, mr2, mv2] = f_mkt(u2)
+[mc3, mp3, mr3, mv3] = f_mkt(u3)
+[mc4, mp4, mr4, mv4] = f_mkt(u4)
+[mc5, mp5, mr5, mv5] = f_mkt(u5)
+[mc6, mp6, mr6, mv6] = f_mkt(u6)
+[mc7, mp7, mr7, mv7] = f_mkt(u7)
+[mc8, mp8, mr8, mv8] = f_mkt(u8)
+[mc9, mp9, mr9, mv9] = f_mkt(u9)
+[mc10, mp10, mr10, mv10] = f_mkt(u10)
+[mc11, mp11, mr11, mv11] = f_mkt(u11)
+
 // Chart-timeframe technicals.
 rsi  = ta.rsi(close, rsiLen)
 atr  = ta.atr(atrLen)
@@ -135,6 +191,20 @@ ma1  = ta.ema(close, maLen1)
 ma2  = ta.ema(close, maLen2)
 ma3  = ta.ema(close, maLen3)
 vwap = ta.vwap(hlc3)
+
+// ───────────────────────────── Score ─────────────────────────────
+// 0–100 composite from trend, momentum, relative strength and 52-week position.
+// Rule-based: a summary of the numbers on this panel, not a forecast.
+bull   = close > ma3 and ma1 > ma2
+bear   = close < ma3 and ma1 < ma2
+rs1m   = f_ret(dC, c21) - f_ret(bC, b21)
+rngPos = na(h52) or na(l52) or h52 == l52 ? na : math.max(0, math.min(1, (close - l52) / (h52 - l52)))
+score  = (close > ma3 ? 20 : 0) + (ma1 > ma2 ? 15 : 0) + (close > ma2 ? 10 : 0)
+     + (rsi >= 50 and rsi <= 70 ? 15 : rsi > 70 ? 8 : rsi >= 40 ? 5 : 0)
+     + (macdHist > 0 ? 10 : 0)
+     + (na(rs1m) ? 7.5 : rs1m > 0 ? 15 : 0)
+     + (na(rngPos) ? 7.5 : rngPos * 15)
+plot(score, "Terminal score", display = display.data_window)
 
 // ───────────────────────────── Overlays ─────────────────────────────
 plot(showMA ? ma1 : na, "EMA fast", color = C_AMBER, linewidth = 1)
@@ -150,9 +220,11 @@ alertcondition(ta.crossunder(close, l52[1]), "New 52-week low", "{{ticker}} brok
 alertcondition(ta.crossover(rsi, 70), "RSI overbought", "{{ticker}} RSI crossed above 70")
 alertcondition(ta.crossunder(rsi, 30), "RSI oversold", "{{ticker}} RSI crossed below 30")
 alertcondition(ta.cross(ma1, ma2), "EMA fast/mid cross", "{{ticker}} fast/mid EMA cross at {{close}}")
+alertcondition(ta.crossover(score, 70), "Score turned strong", "{{ticker}} terminal score rose above 70")
+alertcondition(ta.crossunder(score, 30), "Score turned weak", "{{ticker}} terminal score fell below 30")
 
 // ───────────────────────────── Panel ─────────────────────────────
-var table T = table.new(f_pos(panelPos), 4, 60, bgcolor = C_BG, frame_color = C_AMBER, frame_width = 1, border_color = C_GRID, border_width = 1)
+var table T = table.new(f_pos(panelPos), 4, 70, bgcolor = C_BG, frame_color = C_AMBER, frame_width = 1, border_color = C_GRID, border_width = 1)
 SZ = f_size(textSz)
 
 f_cell(int c, int r, string t, color tc, color bg, string al) =>
@@ -189,7 +261,7 @@ f_watch(int r, string s, float q, float p) =>
     f_cell(3, r, f_pct(pct), f_col(pct), bg, text.align_right)
 
 if barstate.islast
-    table.clear(T, 0, 0, 3, 59)
+    table.clear(T, 0, 0, 3, 69)
     int r = 0
 
     // Header: security line + description.
@@ -219,6 +291,34 @@ if barstate.islast
         f_band(r, " 52W RANGE  L " + str.repeat("█", filled) + str.repeat("░", 20 - filled) + " H  " + str.tostring(rngPct * 100, "0") + "%", C_AMBER, C_BG)
         r += 1
 
+    // Analyst note: plain-English read of the numbers above, with the score.
+    if showNote
+        scoreTxt = score >= 70 ? "STRONG" : score >= 55 ? "POSITIVE" : score > 45 ? "NEUTRAL" : score > 30 ? "NEGATIVE" : "WEAK"
+        scoreCol = score >= 55 ? C_UP : score > 45 ? C_AMBER : C_DN
+        f_band(r, " ANALYST NOTE   SCORE " + str.tostring(score, "0") + "/100 " + scoreTxt, C_BG, C_AMBER)
+        r += 1
+        filledS = int(math.round(score / 5))
+        f_band(r, " " + str.repeat("█", filledS) + str.repeat("░", 20 - filledS), scoreCol, C_BG)
+        r += 1
+        notes = array.new_string()
+        if not na(chgPct)
+            array.push(notes, "• " + syminfo.ticker + (chgPct >= 0 ? " up " : " down ") + str.tostring(math.abs(chgPct), "0.00") + "% today" + (na(volRatio) ? "." : " on " + str.tostring(volRatio, "0.0") + "x normal volume" + (volRatio >= 1.5 ? " (unusual)." : ".")))
+        array.push(notes, bull ? "• Uptrend: above EMA" + str.tostring(maLen3) + ", fast EMA over mid." : bear ? "• Downtrend: below EMA" + str.tostring(maLen3) + ", fast EMA under mid." : "• Mixed trend: the EMAs disagree.")
+        array.push(notes, "• RSI " + str.tostring(rsi, "0") + (rsi >= 70 ? " overbought" : rsi <= 30 ? " oversold" : rsi >= 50 ? " firm" : " soft") + "; MACD " + (macdHist > 0 ? "above" : "below") + " its signal.")
+        if not na(rngPos)
+            array.push(notes, "• At " + str.tostring(rngPos * 100, "0") + "% of the 52w range, " + str.tostring((h52 - last) / h52 * 100, "0.0") + "% below the high.")
+        if not na(rs1m)
+            array.push(notes, "• 1M vs " + f_ticker(benchSym) + ": " + f_pct(rs1m) + (rs1m >= 0 ? " (leading)." : " (lagging)."))
+        nextE = earnings.future_time
+        if isStock and not na(nextE)
+            daysE = math.ceil((nextE - timenow) / 86400000.0)
+            if daysE >= 0 and daysE <= 14
+                array.push(notes, "• Earnings in " + str.tostring(daysE) + "d: expect bigger moves.")
+        array.push(notes, "Rule-based summary, not advice.")
+        f_cell(0, r, array.join(notes, "\n"), C_WHITE, C_BG, text.align_left)
+        table.merge_cells(T, 0, r, 3, r)
+        r += 1
+
     // Performance.
     if showPerf
         f_band(r, " PERFORMANCE", C_BG, C_AMBER)
@@ -234,7 +334,7 @@ if barstate.islast
         r += 1
         f_kv(r, "YTD", f_pct(pyt), f_col(pyt), "1Y", f_pct(p1y), f_col(p1y))
         r += 1
-        rs1 = na(p1m) ? na : p1m - f_ret(bC, b21)
+        rs1 = rs1m
         rs3 = na(p3m) ? na : p3m - f_ret(bC, b63)
         bt  = f_ticker(benchSym)
         f_kv(r, "vs " + bt + " 1M", f_pct(rs1), f_col(rs1), "vs " + bt + " 3M", f_pct(rs3), f_col(rs3))
@@ -254,8 +354,6 @@ if barstate.islast
         r += 1
         f_kv(r, "EMA" + str.tostring(maLen3), f_px(ma3), last >= ma3 ? C_UP : C_DN, "VWAP", f_px(vwap), na(vwap) ? C_GREY : last >= vwap ? C_UP : C_DN)
         r += 1
-        bull  = last > ma3 and ma1 > ma2
-        bear  = last < ma3 and ma1 < ma2
         trend = bull ? "▲ BULLISH" : bear ? "▼ BEARISH" : "◆ NEUTRAL"
         f_band(r, " TREND  " + trend, bull ? C_UP : bear ? C_DN : C_AMBER, C_BG)
         r += 1
@@ -316,3 +414,102 @@ if barstate.islast
 
     // Status line.
     f_band(r, " " + str.format_time(timenow, "yyyy-MM-dd HH:mm:ss", syminfo.timezone) + " " + syminfo.timezone + (barstate.isrealtime ? "  ● LIVE" : "  ○ DELAYED/CLOSED"), C_GREY, C_BG)
+
+
+// ───────────────────────────── Market panel ─────────────────────────────
+var table M = table.new(f_pos(mktPos), 4, 32, bgcolor = C_BG, frame_color = C_AMBER, frame_width = 1, border_color = C_GRID, border_width = 1)
+
+f_mcell(int c, int r, string t, color tc, color bg, string al) =>
+    table.cell(M, c, r, t, text_color = tc, bgcolor = bg, text_size = SZ, text_halign = al, text_font_family = font.family_monospace)
+
+f_mband(int r, string t, color tc, color bg) =>
+    f_mcell(0, r, t, tc, bg, text.align_left)
+    table.merge_cells(M, 0, r, 3, r)
+
+// Black at 0%, full green/red at ±heatScale.
+f_heat(float x) =>
+    na(x) ? #1A1A1A : x >= 0 ? color.from_gradient(x, 0, heatScale, #1A1A1A, #00A651) : color.from_gradient(x, -heatScale, 0, #D32F2F, #1A1A1A)
+
+if barstate.islast and showMkt
+    table.clear(M, 0, 0, 3, 31)
+    syms = array.from(u0, u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11)
+    lst  = array.from(mc0, mc1, mc2, mc3, mc4, mc5, mc6, mc7, mc8, mc9, mc10, mc11)
+    prv  = array.from(mp0, mp1, mp2, mp3, mp4, mp5, mp6, mp7, mp8, mp9, mp10, mp11)
+    rsis = array.from(mr0, mr1, mr2, mr3, mr4, mr5, mr6, mr7, mr8, mr9, mr10, mr11)
+    rvol = array.from(mv0, mv1, mv2, mv3, mv4, mv5, mv6, mv7, mv8, mv9, mv10, mv11)
+    chgs = array.new_float()
+    for i = 0 to 11
+        array.push(chgs, array.get(syms, i) == "" ? na : f_ret(array.get(lst, i), array.get(prv, i)))
+
+    // Breadth, leader and laggard.
+    int nUp = 0
+    int nOk = 0
+    int iBest = -1
+    int iWorst = -1
+    for i = 0 to 11
+        x = array.get(chgs, i)
+        if not na(x)
+            nOk += 1
+            nUp += x >= 0 ? 1 : 0
+            if iBest < 0 or x > array.get(chgs, iBest)
+                iBest := i
+            if iWorst < 0 or x < array.get(chgs, iWorst)
+                iWorst := i
+
+    int r = 0
+    f_mband(r, " MARKET — " + str.upper(universe) + "   HEAT", C_BG, C_AMBER)
+    r += 1
+    // 4 × 3 heatmap.
+    for row = 0 to 2
+        for col = 0 to 3
+            i = row * 4 + col
+            x = array.get(chgs, i)
+            sym = array.get(syms, i)
+            f_mcell(col, r, sym == "" ? "" : f_ticker(sym) + "\n" + f_pct(x), na(x) ? C_GREY : C_WHITE, f_heat(x), text.align_center)
+        r += 1
+    breadthTxt = nOk == 0 ? " No data for this universe." : " BREADTH " + str.tostring(nUp) + "/" + str.tostring(nOk) + " up"
+         + (iBest >= 0 ? "  ▲ " + f_ticker(array.get(syms, iBest)) + " " + f_pct(array.get(chgs, iBest)) : "")
+         + (iWorst >= 0 ? "  ▼ " + f_ticker(array.get(syms, iWorst)) + " " + f_pct(array.get(chgs, iWorst)) : "")
+    f_mband(r, breadthTxt, nOk > 0 and nUp * 2 >= nOk ? C_UP : C_DN, C_BG)
+    r += 1
+
+    // Screener: filter, then sort descending by the chosen column.
+    if showScr
+        f_mband(r, " SCREENER — " + scrFilter + " · by " + scrSort, C_BG, C_AMBER)
+        r += 1
+        f_mcell(0, r, "TICKER", C_GREY, C_BG, text.align_left)
+        f_mcell(1, r, "%CHG", C_GREY, C_BG, text.align_right)
+        f_mcell(2, r, "RSI", C_GREY, C_BG, text.align_right)
+        f_mcell(3, r, "RVOL", C_GREY, C_BG, text.align_right)
+        r += 1
+        keys = array.new_float()
+        kept = array.new_bool()
+        for i = 0 to 11
+            x  = array.get(chgs, i)
+            ri = array.get(rsis, i)
+            rv = array.get(rvol, i)
+            keep = not na(x) and (scrFilter == "All" or (scrFilter == "Gainers" and x > 0) or (scrFilter == "Losers" and x < 0)
+                 or (scrFilter == "Oversold (RSI < 30)" and ri < 30) or (scrFilter == "Overbought (RSI > 70)" and ri > 70)
+                 or (scrFilter == "Unusual volume (RVOL > 1.5)" and rv > 1.5))
+            k = scrSort == "RSI" ? ri : scrSort == "Relative volume" ? rv : x
+            // Losers read best worst-first; everything else best-first.
+            k := scrFilter == "Losers" and scrSort == "% Change" ? -k : k
+            array.push(keys, keep ? (na(k) ? -1e9 : k) : -1e12)
+            array.push(kept, keep)
+        order = array.sort_indices(keys, order.descending)
+        int shown = 0
+        for j = 0 to 11
+            i = array.get(order, j)
+            if array.get(kept, i) and shown < scrRows
+                bg = shown % 2 == 0 ? C_BG : C_ALT
+                x  = array.get(chgs, i)
+                ri = array.get(rsis, i)
+                rv = array.get(rvol, i)
+                f_mcell(0, r, f_ticker(array.get(syms, i)), C_AMBER, bg, text.align_left)
+                f_mcell(1, r, f_pct(x), f_col(x), bg, text.align_right)
+                f_mcell(2, r, na(ri) ? "—" : str.tostring(ri, "0"), na(ri) ? C_GREY : ri >= 70 ? C_DN : ri <= 30 ? C_UP : C_WHITE, bg, text.align_right)
+                f_mcell(3, r, na(rv) ? "—" : str.tostring(rv, "0.0") + "x", na(rv) ? C_GREY : rv >= 1.5 ? C_AMBER : C_WHITE, bg, text.align_right)
+                r += 1
+                shown += 1
+        if shown == 0
+            f_mband(r, " No symbols match this filter.", C_GREY, C_BG)
