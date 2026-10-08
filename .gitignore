@@ -221,3 +221,4 @@ __marimo__/
 api_key.txt
 bot_state*.json
 markets_manual_backup.json
+*.tmp

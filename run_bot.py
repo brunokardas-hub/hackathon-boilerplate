@@ -44,6 +44,10 @@ KELLY         = 0.5        # position size multiplier (0.5 = half Kelly)
 MIN_EDGE      = 0.03       # min gap between fair value and Cup price to trade
 MAX_MARKET_FRACTION = 0.20 # max share of equity at risk in one market
 COOLDOWN      = 3          # rounds to wait after a take profit / stop loss
+TRADE_COOLDOWN = 1         # rounds to wait after ANY trade in a market
+ALLOW_SHORT   = False      # True = sell YES you don't own (only if the Cup allows it)
+USE_NEWS      = True       # read tournament news + Google News headlines
+NEWS_WEIGHT   = 0.05       # max shift of fair value from news (0.05 = 5 points)
 MAX_ORDER_QTY = 5000       # api mode: split bigger orders into chunks of this size
 ORDER_TTL     = 15         # api mode: unfilled orders expire after this many seconds
 USE_ONLINE_PRICES = True   # fetch Kalshi / Polymarket prices (needs internet)
@@ -64,7 +68,9 @@ except ImportError:
 def make_config():
     return bot.Config(strategy=STRATEGY, take_profit=TAKE_PROFIT, stop_loss=STOP_LOSS,
                       trailing=TRAILING_STOP, kelly_fraction=KELLY, min_edge=MIN_EDGE,
-                      max_market_frac=MAX_MARKET_FRACTION, cooldown_runs=COOLDOWN)
+                      max_market_frac=MAX_MARKET_FRACTION, cooldown_runs=COOLDOWN,
+                      trade_cooldown_runs=TRADE_COOLDOWN, allow_short=ALLOW_SHORT,
+                      use_news=USE_NEWS, news_weight=NEWS_WEIGHT)
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +158,7 @@ def list_markets(client, t, write_to: str):
                     "cup_exchange_id": r["exchange_id"], "enabled": False,
                     "manual": None, "kalshi": None, "polymarket": None,
                     "polymarket_outcome": None,
+                    "news_query": None, "news_keywords": None, "news_flip": False,
                     "cup_bid_when_listed": q.get("bestBid"),
                     "cup_ask_when_listed": q.get("bestAsk")})
     with open(write_to, "w") as f:
