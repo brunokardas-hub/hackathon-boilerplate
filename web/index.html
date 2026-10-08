@@ -40,14 +40,20 @@
   /* Grid of panels */
   .grid {
     display: grid; gap: 1px; background: var(--line);
-    grid-template-columns: 300px minmax(0, 1fr) 380px;
-    grid-template-rows: 130px minmax(0, 1fr) 360px;
+    /* The chart gets the whole centre column and most of the screen height;
+       the lower panels sit below the fold. */
+    grid-template-columns: 270px minmax(0, 1fr) 340px;
+    grid-template-rows: 110px minmax(560px, calc(100vh - 230px)) 340px;
     grid-template-areas:
-      "info  info  news"
+      "quote info  news"
       "quote chart news"
       "ta    fa    eco";
-    height: calc(100vh - 110px); min-height: 760px;
   }
+  /* MAX: chart fills the screen; other panels hidden. */
+  .grid.max { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "chart"; height: calc(100vh - 110px); min-height: 480px; }
+  .grid.max > .panel:not(#p-chart) { display: none; }
+  .panel > h2 .maxbtn { background: transparent; color: var(--amber); border: 1px solid var(--line); padding: 0 6px; font: inherit; font-size: 10px; }
+  .panel > h2 .maxbtn:hover { background: var(--amber); color: #000; }
   .panel { background: var(--panel); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
   .panel > h2 { margin: 0; padding: 3px 8px; font-size: 11px; font-weight: 700; background: #111; color: var(--amber); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; }
   .panel > h2 small { color: var(--muted); font-weight: 400; }
@@ -130,7 +136,7 @@
   @media (max-width: 1100px) {
     .grid {
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: 130px 480px 520px 360px 360px 420px 420px;
+      grid-template-rows: 110px 72vh 520px 360px 360px 420px 420px;
       grid-template-areas: "info" "chart" "news" "quote" "ta" "fa" "eco";
       height: auto; min-height: 0;
     }
@@ -175,7 +181,7 @@
 <main class="grid view active" id="v-main">
   <section class="panel" id="p-info"><h2>DES · SECURITY <small id="symLabel"></small></h2><div class="body" id="w-info"></div></section>
   <section class="panel" id="p-quote"><h2>MONITOR</h2><div class="body" id="w-quote"></div></section>
-  <section class="panel" id="p-chart"><h2>GP · CHART</h2><div class="body"><div id="w-chart" style="position:absolute;inset:0"></div></div></section>
+  <section class="panel" id="p-chart"><h2>GP · CHART <button type="button" class="maxbtn" id="maxBtn" title="Chart fills the screen (Esc to exit)">⤢ MAX</button></h2><div class="body"><div id="w-chart" style="position:absolute;inset:0"></div></div></section>
   <section class="panel" id="p-news">
     <h2>N · NEWS <small id="newsStatus"></small></h2>
     <div class="news-tabs" id="newsTabs">
@@ -288,6 +294,7 @@
       <tr><td>BRIEF</td><td>AI morning briefing on your watchlist</td></tr>
       <tr><td>MAIN · AI</td><td>Back to the main screen / open the analyst</td></tr>
       <tr><td>GP · FA · TA · ECO</td><td>Jump to chart, financials, technicals, calendar</td></tr>
+      <tr><td>MAX</td><td>Chart fills the screen (Esc to exit)</td></tr>
       <tr><td>/</td><td>Focus the command line</td></tr>
       <tr><td>Esc</td><td>Close this help</td></tr>
     </table>
@@ -503,12 +510,21 @@
 
   // ── Commands ──
   function flash(id) {
+    if (id !== "p-chart" && document.getElementById("v-main").classList.contains("max")) setMax(false);
     showView("main");
     const el = document.getElementById(id);
     el.scrollIntoView({ behavior: "smooth", block: "nearest" });
     el.classList.add("flash");
     setTimeout(() => el.classList.remove("flash"), 1200);
   }
+  function setMax(on) {
+    showView("main");
+    document.getElementById("v-main").classList.toggle("max", on);
+    document.getElementById("maxBtn").textContent = on ? "⤡ EXIT" : "⤢ MAX";
+    window.scrollTo(0, 0);
+  }
+  document.getElementById("maxBtn").addEventListener("click", () => setMax(!document.getElementById("v-main").classList.contains("max")));
+
   function setFeed(f) {
     feed = f;
     document.querySelectorAll("#newsTabs button").forEach((b) => b.classList.toggle("on", b.dataset.feed === f));
@@ -531,6 +547,7 @@
     if (c === "N" || c === "NEWS") return flash("p-news");
     if (c === "TOP") { setFeed("general"); return flash("p-news"); }
     if (c === "GP" || c === "CHART") return flash("p-chart");
+    if (c === "MAX") return setMax(true);
     if (c === "FA") return flash("p-fa");
     if (c === "TA") return flash("p-ta");
     if (c === "ECO") return flash("p-eco");
@@ -832,7 +849,7 @@
   document.querySelectorAll("#newsTabs button").forEach((b) => b.addEventListener("click", () => setFeed(b.dataset.feed)));
   document.getElementById("help").addEventListener("click", (e) => { if (e.target.id === "help") e.currentTarget.classList.remove("open"); });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") document.getElementById("help").classList.remove("open");
+    if (e.key === "Escape") { document.getElementById("help").classList.remove("open"); if (document.getElementById("v-main").classList.contains("max")) setMax(false); }
     if (e.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) { e.preventDefault(); document.getElementById("cmdInput").focus(); }
   });
 

@@ -23,7 +23,7 @@ A Bloomberg-style dashboard for TradingView, written in Pine Script v6. It draws
 A Bloomberg-style page in a single file. Use it at **https://brunokardas-hub.github.io/hackathon-boilerplate/** once GitHub Pages is on (see below), or download the file and double-click it.
 
 - **Command line**: type `AAPL`, `NYSE:BA`, `BTCUSD` or `EURUSD` and press Enter to load a symbol. Other commands: `N`, `GP`, `FA`, `TA` and `ECO` jump to a panel; `HEAT` / `HEAT CRYPTO` open the market heatmap; `EQS` / `EQS CRYPTO` / `EQS FX` open the screener; `ASK <question>` asks the AI analyst; `BRIEF` writes a morning briefing; `HELP` lists everything. Press `/` to focus the command line.
-- **MAIN screen**: security overview, a full TradingView chart, a multi-asset monitor, a technicals summary, company financials (stocks only), an economic calendar, a ticker tape and world clocks.
+- **MAIN screen**: a large TradingView chart (press **⤢ MAX** or type `MAX` to fill the screen; Esc to exit), security overview, a multi-asset monitor, a technicals summary, company financials (stocks only), an economic calendar, a ticker tape and world clocks.
 - **News**: works with no setup, using TradingView's news feed. Paste a free [Finnhub](https://finnhub.io/register) key into the news panel to get live headlines that refresh every 60 seconds, with TICKER / TOP / FX / CRYPTO / M&A tabs and a rough ▲/▼ tone tag based on keywords.
 - **HEAT**: market map of the S&P 500, Nasdaq 100, all US stocks, the DAX or crypto. Tile size is market cap and colour is % change.
 - **EQS**: TradingView's screener for US stocks, crypto or FX, with filters and column sets.
