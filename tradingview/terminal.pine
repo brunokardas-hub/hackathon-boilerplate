@@ -10,6 +10,8 @@ panelPos  = input.string("Top Right", "Panel position", options = ["Top Right", 
 textSz    = input.string("Small", "Text size", options = ["Tiny", "Small", "Normal"], group = G_LAY)
 showPerf  = input.bool(true, "Show PERFORMANCE", group = G_LAY)
 showTech  = input.bool(true, "Show TECHNICALS", group = G_LAY)
+showFund  = input.bool(true, "Show FUNDAMENTALS (stocks only)", group = G_LAY)
+showMacro = input.bool(true, "Show MACRO", group = G_LAY)
 showWatch = input.bool(true, "Show MONITOR", group = G_LAY)
 
 const string G_BEN = "Benchmark"
@@ -22,6 +24,9 @@ w3 = input.symbol("TVC:DXY", "3", group = G_W)
 w4 = input.symbol("TVC:US10Y", "4", group = G_W)
 w5 = input.symbol("TVC:GOLD", "5", group = G_W)
 w6 = input.symbol("BITSTAMP:BTCUSD", "6", group = G_W)
+
+const string G_MAC = "Macro"
+macroCC = input.string("US", "Country", options = ["US", "EU", "GB", "JP", "CN", "CA", "AU", "DE", "CH"], group = G_MAC)
 
 const string G_TA = "Technicals"
 rsiLen = input.int(14, "RSI length", minval = 2, group = G_TA)
@@ -98,6 +103,30 @@ f_quote(string s) => request.security(s, "D", [close, close[1]], ignore_invalid_
 [q5, p5] = f_quote(w5)
 [q6, p6] = f_quote(w6)
 
+// Fundamentals (na for symbols without financial data, e.g. crypto or FX).
+isStock = syminfo.type == "stock"
+epsTTM  = request.financial(syminfo.tickerid, "EARNINGS_PER_SHARE_DILUTED", "TTM", ignore_invalid_symbol = true)
+revTTM  = request.financial(syminfo.tickerid, "TOTAL_REVENUE", "TTM", ignore_invalid_symbol = true)
+revFQ   = request.financial(syminfo.tickerid, "TOTAL_REVENUE", "FQ", barmerge.gaps_on, ignore_invalid_symbol = true)
+shares  = request.financial(syminfo.tickerid, "TOTAL_SHARES_OUTSTANDING", "FQ", ignore_invalid_symbol = true)
+grossM  = request.financial(syminfo.tickerid, "GROSS_MARGIN", "TTM", ignore_invalid_symbol = true)
+netM    = request.financial(syminfo.tickerid, "NET_MARGIN", "TTM", ignore_invalid_symbol = true)
+roe     = request.financial(syminfo.tickerid, "RETURN_ON_EQUITY", "FQ", ignore_invalid_symbol = true)
+debtEq  = request.financial(syminfo.tickerid, "DEBT_TO_EQUITY", "FQ", ignore_invalid_symbol = true)
+fcfTTM  = request.financial(syminfo.tickerid, "FREE_CASH_FLOW", "TTM", ignore_invalid_symbol = true)
+divYld  = request.financial(syminfo.tickerid, "DIVIDENDS_YIELD", "FY", ignore_invalid_symbol = true)
+epsAct  = request.earnings(syminfo.tickerid, earnings.actual, ignore_invalid_symbol = true)
+epsEst  = request.earnings(syminfo.tickerid, earnings.estimate, ignore_invalid_symbol = true)
+// Same quarter last year: the 4th report before the latest one (needs ~1y+ of loaded bars).
+revYoY  = f_ret(revFQ, ta.valuewhen(not na(revFQ), revFQ, 4))
+
+// Macro series from TradingView's ECONOMICS feed, with the previous release for the change.
+f_eco(string code, string tf) => request.security("ECONOMICS:" + macroCC + code, tf, [close, close[1]], ignore_invalid_symbol = true)
+[ecoRate, ecoRateP] = f_eco("INTR", "1M")
+[ecoInfl, ecoInflP] = f_eco("IRYY", "1M")
+[ecoUnem, ecoUnemP] = f_eco("UR", "1M")
+[ecoGdp, ecoGdpP]   = f_eco("GDPQQ", "3M")
+
 // Chart-timeframe technicals.
 rsi  = ta.rsi(close, rsiLen)
 atr  = ta.atr(atrLen)
@@ -123,7 +152,7 @@ alertcondition(ta.crossunder(rsi, 30), "RSI oversold", "{{ticker}} RSI crossed b
 alertcondition(ta.cross(ma1, ma2), "EMA fast/mid cross", "{{ticker}} fast/mid EMA cross at {{close}}")
 
 // ───────────────────────────── Panel ─────────────────────────────
-var table T = table.new(f_pos(panelPos), 4, 40, bgcolor = C_BG, frame_color = C_AMBER, frame_width = 1, border_color = C_GRID, border_width = 1)
+var table T = table.new(f_pos(panelPos), 4, 60, bgcolor = C_BG, frame_color = C_AMBER, frame_width = 1, border_color = C_GRID, border_width = 1)
 SZ = f_size(textSz)
 
 f_cell(int c, int r, string t, color tc, color bg, string al) =>
@@ -141,6 +170,15 @@ f_kv(int r, string k1, string v1, color c1, string k2, string v2, color c2) =>
     f_cell(2, r, k2, C_AMBER, bg, text.align_left)
     f_cell(3, r, v2, c2, bg, text.align_right)
 
+f_big(float x) =>
+    na(x) ? "—" : math.abs(x) >= 1e12 ? str.tostring(x / 1e12, "0.00") + "T" : math.abs(x) >= 1e9 ? str.tostring(x / 1e9, "0.00") + "B" : math.abs(x) >= 1e6 ? str.tostring(x / 1e6, "0.00") + "M" : str.tostring(x, "#,##0")
+
+f_val(float x, string fmt, string suffix) => na(x) ? "—" : str.tostring(x, fmt) + suffix
+
+// Macro value with the change since the previous release, e.g. "3.20% (-0.10)".
+f_eco_txt(float v, float p) =>
+    na(v) ? "—" : str.tostring(v, "0.00") + "%" + (na(p) ? "" : " (" + (v - p >= 0 ? "+" : "") + str.tostring(v - p, "0.00") + ")")
+
 f_watch(int r, string s, float q, float p) =>
     bg = r % 2 == 0 ? C_BG : C_ALT
     chg = na(q) or na(p) ? na : q - p
@@ -151,7 +189,7 @@ f_watch(int r, string s, float q, float p) =>
     f_cell(3, r, f_pct(pct), f_col(pct), bg, text.align_right)
 
 if barstate.islast
-    table.clear(T, 0, 0, 3, 39)
+    table.clear(T, 0, 0, 3, 59)
     int r = 0
 
     // Header: security line + description.
@@ -220,6 +258,38 @@ if barstate.islast
         bear  = last < ma3 and ma1 < ma2
         trend = bull ? "▲ BULLISH" : bear ? "▼ BEARISH" : "◆ NEUTRAL"
         f_band(r, " TREND  " + trend, bull ? C_UP : bear ? C_DN : C_AMBER, C_BG)
+        r += 1
+
+    // Fundamentals.
+    if showFund and isStock
+        f_band(r, " FUNDAMENTALS", C_BG, C_AMBER)
+        r += 1
+        pe   = na(epsTTM) or epsTTM <= 0 ? na : last / epsTTM
+        mcap = na(shares) ? na : shares * last
+        f_kv(r, "MKT CAP", f_big(mcap), C_WHITE, "P/E", f_val(pe, "0.0", "x"), C_WHITE)
+        r += 1
+        f_kv(r, "EPS TTM", f_val(epsTTM, "0.00", ""), f_col(epsTTM), "REV TTM", f_big(revTTM), C_WHITE)
+        r += 1
+        f_kv(r, "REV YoY", f_pct(revYoY), f_col(revYoY), "FCF TTM", f_big(fcfTTM), f_col(fcfTTM))
+        r += 1
+        f_kv(r, "GROSS M", f_val(grossM, "0.0", "%"), C_WHITE, "NET M", f_val(netM, "0.0", "%"), f_col(netM))
+        r += 1
+        f_kv(r, "ROE", f_val(roe, "0.0", "%"), f_col(roe), "DEBT/EQ", f_val(debtEq, "0.00", "x"), na(debtEq) ? C_GREY : debtEq > 2 ? C_DN : C_WHITE)
+        r += 1
+        surprise = na(epsAct) or na(epsEst) or epsEst == 0 ? na : (epsAct - epsEst) / math.abs(epsEst) * 100
+        f_kv(r, "DIV YLD", f_val(divYld, "0.00", "%"), C_WHITE, "EPS SURP", f_pct(surprise), f_col(surprise))
+        r += 1
+        nextEarn = earnings.future_time
+        f_band(r, " NEXT EARNINGS  " + (na(nextEarn) ? "—" : str.format_time(int(nextEarn), "yyyy-MM-dd", syminfo.timezone) + "  (" + str.tostring(math.ceil((nextEarn - timenow) / 86400000.0)) + "d)"), C_AMBER, C_BG)
+        r += 1
+
+    // Macro.
+    if showMacro
+        f_band(r, " MACRO — " + macroCC, C_BG, C_AMBER)
+        r += 1
+        f_kv(r, "POLICY RT", f_eco_txt(ecoRate, ecoRateP), C_WHITE, "CPI YoY", f_eco_txt(ecoInfl, ecoInflP), na(ecoInfl) or na(ecoInflP) ? C_WHITE : ecoInfl > ecoInflP ? C_DN : C_UP)
+        r += 1
+        f_kv(r, "UNEMPL", f_eco_txt(ecoUnem, ecoUnemP), na(ecoUnem) or na(ecoUnemP) ? C_WHITE : ecoUnem > ecoUnemP ? C_DN : C_UP, "GDP QoQ", f_eco_txt(ecoGdp, ecoGdpP), f_col(ecoGdp))
         r += 1
 
     // Multi-asset monitor.
