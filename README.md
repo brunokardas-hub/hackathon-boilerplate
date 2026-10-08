@@ -16,12 +16,24 @@ A Bloomberg-style dashboard for TradingView, written in Pine Script v6. It draws
 
 **Install:** open TradingView → *Pine Editor* → paste in the contents of `terminal.pine` → *Save* → *Add to chart*. Change symbols, position and size in the indicator's settings.
 
-## Web terminal with news (`web/terminal.html`)
+## Web terminal (`web/index.html`)
 
-A Bloomberg-style page in a single file. Open it in any browser by double-clicking it; there's nothing to install.
+A Bloomberg-style page in a single file. Use it at **https://brunokardas-hub.github.io/hackathon-boilerplate/** once GitHub Pages is on (see below), or download the file and double-click it.
 
-- **Command line**: type `AAPL`, `NYSE:BA`, `BTCUSD` or `EURUSD` and press Enter to load a symbol. Type `N`, `GP`, `FA`, `TA` or `ECO` to jump to a panel, or `HELP` for the list. Press `/` to focus the command line.
-- **Panels**: security overview, a full TradingView chart, a multi-asset monitor, a technicals summary, company financials (stocks only), an economic calendar, a ticker tape and world clocks.
-- **News**: works with no setup, using TradingView's news feed. Paste a free [Finnhub](https://finnhub.io/register) key into the news panel to get live headlines that refresh every 60 seconds, with TICKER / TOP / FX / CRYPTO / M&A tabs and a rough ▲/▼ tone tag based on keywords. The key is stored only in your browser.
+- **Command line**: type `AAPL`, `NYSE:BA`, `BTCUSD` or `EURUSD` and press Enter to load a symbol. Other commands: `N`, `GP`, `FA`, `TA` and `ECO` jump to a panel; `HEAT` / `HEAT CRYPTO` open the market heatmap; `EQS` / `EQS CRYPTO` / `EQS FX` open the screener; `ASK <question>` asks the AI analyst; `BRIEF` writes a morning briefing; `HELP` lists everything. Press `/` to focus the command line.
+- **MAIN screen**: security overview, a full TradingView chart, a multi-asset monitor, a technicals summary, company financials (stocks only), an economic calendar, a ticker tape and world clocks.
+- **News**: works with no setup, using TradingView's news feed. Paste a free [Finnhub](https://finnhub.io/register) key into the news panel to get live headlines that refresh every 60 seconds, with TICKER / TOP / FX / CRYPTO / M&A tabs and a rough ▲/▼ tone tag based on keywords.
+- **HEAT**: market map of the S&P 500, Nasdaq 100, all US stocks, the DAX or crypto. Tile size is market cap and colour is % change.
+- **EQS**: TradingView's screener for US stocks, crypto or FX, with filters and column sets.
+- **AI analyst**: ask questions in plain English. Claude gets the symbol on screen, plus the live quote and recent headlines if you added a Finnhub key, and can search the web. Add your own [Anthropic API key](https://platform.claude.com/settings/keys) in the AI screen's SETUP panel. You pay Anthropic per question, and the screen shows the estimated cost of each answer. The default model is Claude Opus 5.5; Sonnet 5.5 costs about half as much and Haiku 5.5 far less. Answers are information, not financial advice.
+
+API keys are stored only in your browser and are sent only to their own provider (Finnhub or Anthropic). Don't save them on a shared computer, and set a monthly spend limit in the Claude Console.
 
 The chart is TradingView's embeddable widget, which can't load custom Pine scripts. To use `terminal.pine`, open it on tradingview.com.
+
+### Hosting on GitHub Pages
+
+`.github/workflows/pages.yml` publishes the `web/` folder whenever it changes on `main`. One-time setup:
+
+1. In the repo on GitHub, go to **Settings → Pages** and set **Source** to **GitHub Actions**.
+2. Merge this branch into `main`. The workflow runs and the site appears at the address above. You can also run it by hand from the **Actions** tab.
