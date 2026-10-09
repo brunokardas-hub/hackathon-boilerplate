@@ -138,6 +138,7 @@ f_row(table t, int r, string label, int n, int w, float gp, float gl, float net)
     table.cell(t, 5, r, n > 0 ? str.tostring(net / n, "#,##0.00") : "—", text_color = net >= 0 ? #4AF626 : #FF433D, text_font_family = font.family_monospace, text_size = size.small)
 
 var table T = table.new(position.top_right, 6, 4, bgcolor = #000000, frame_color = #FB8B1E, frame_width = 1, border_color = #262626, border_width = 1)
+var bool merged = false
 if barstate.islastconfirmedhistory or barstate.islast
     int nI = 0
     int wI = 0
@@ -167,4 +168,6 @@ if barstate.islastconfirmedhistory or barstate.islast
     pfO = glO > 0 ? gpO / glO : na
     verdictTxt = nO < 15 ? "NOT ENOUGH OUT-OF-SAMPLE TRADES" : not na(pfO) and pfO >= 1.2 ? "EDGE HOLDS OUT-OF-SAMPLE: paper trade it next" : not na(pfO) and pfO >= 1 ? "WEAK: barely breaks even" : "NO EDGE: don't trade this"
     table.cell(T, 0, 3, verdictTxt, text_color = nO < 15 ? #FB8B1E : not na(pfO) and pfO >= 1.2 ? #4AF626 : #FF433D, text_font_family = font.family_monospace, text_size = size.small)
-    table.merge_cells(T, 0, 3, 5, 3)
+    if not merged
+        table.merge_cells(T, 0, 3, 5, 3)
+        merged := true
