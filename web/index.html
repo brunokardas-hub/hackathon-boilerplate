@@ -3752,8 +3752,14 @@
     const res = await evaluateTrade({ sym, side: side > 0 ? "long" : "short", qty, entry: price, stop, target, tested: !!pick.tested });
     return { ...base, setup: pick.setup, tested: !!pick.tested, watch: !!pick.watch, others: found.length - 1, side, entry: price, stop, target, qty, grade: res.grade, checks: res.checks };
   }
-  async function runScan(silent) {
-    if (scanBusy) return;
+  let scanPromise = null;
+  function runScan(silent) {
+    // A scan already running is shared, never restarted or skipped instantly.
+    if (scanPromise) return scanPromise;
+    scanPromise = doScan(silent).finally(() => { scanPromise = null; });
+    return scanPromise;
+  }
+  async function doScan(silent) {
     scanBusy = true;
     if (!silent) $("scanStatus").textContent = `Scanning ${myList.length} symbols…`;
     const rows = [];
@@ -3762,7 +3768,7 @@
     }
     const rank = (r) => (r.error ? 9 : !r.setup ? 8 : { A: 0, B: 2, C: 4 }[r.grade] + (r.watch ? 1 : 0) - (r.tested ? 0.5 : 0));
     rows.sort((a, b) => rank(a) - rank(b) || (b.score || 0) - (a.score || 0));
-    scanRows = rows; scanAt = Date.now(); scanBusy = false;
+    scanRows = rows; scanAt = Date.now(); scanBusy = false; // scanAt always moves on, even when every symbol failed
     if (view === "scan") renderScan();
     // Alerts: only new A-grade setups (not watch-list candidates), once per symbol, setup and day.
     if ($("scanAlerts").checked) {
@@ -3869,8 +3875,9 @@
         if (s > 0 ? p >= oneR : p <= oneR) fire("oneR", `1R REACHED · ${who}`, `Price ${fmt(p)} is 1R in profit. Plan: take half (HALF button) and move the stop to breakeven.`);
       }
     }
-    if (changed) saveJSON("term.journal", journal);
+    if (changed && Date.now() - levelSaveAt > 3000) { levelSaveAt = Date.now(); saveJSON("term.journal", journal); }
   }
+  let levelSaveAt = 0;
 
   // Partial close: splits off a closed record for part of the position.
   function closePart(id, exit, part) {
@@ -4053,7 +4060,7 @@
   }
   function line(cls, text) { return el("div", "tline " + (cls || ""), text); }
   function actBtn(label, fn) { const b = el("button", "tbtn", label); b.type = "button"; b.addEventListener("click", fn); return b; }
-  let todayEarn = { at: 0, rows: [] };
+  let todayEarn = { at: 0, rows: [] }, todayScanAsked = 0;
   async function loadTodayEarnings() {
     if (!finnhubKey() || Date.now() - todayEarn.at < 30 * 60_000) return;
     todayEarn.at = Date.now();
@@ -4101,7 +4108,10 @@
     // 4. Best setups now
     const setups = scanRows.filter((r) => r.setup && !r.error && r.grade !== "C").slice(0, 5);
     const stale = Date.now() - scanAt > 5 * 60_000;
-    if (stale && myList.length) runScan(true).then(() => { if (view === "today") renderToday(); });
+    if (stale && myList.length && !scanPromise && Date.now() - todayScanAsked > 60_000) {
+      todayScanAsked = Date.now();
+      runScan(true).then(() => { if (view === "today") renderToday(); });
+    }
     const suRows = setups.map((r) => {
       const d = el("div", "tline setup");
       d.append(el("span", "grade g" + r.grade, r.grade), " ", el("b", r.side > 0 ? "up" : "down", `${r.side > 0 ? "LONG" : "SHORT"} ${bareTicker(r.sym)}`), " ", el("span", "muted", r.setup));
