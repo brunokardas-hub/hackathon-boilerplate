@@ -299,6 +299,14 @@
   .cw-side h2 { margin: 0; padding: 5px 10px; font-size: 12px; background: #111; color: var(--amber); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
   .cw-list { flex: 1; overflow-y: auto; min-height: 0; }
 
+  /* Grades and checklist */
+  .grade { display: inline-block; min-width: 22px; text-align: center; font-weight: 700; padding: 1px 6px; color: #000; }
+  .grade.gA { background: var(--up); } .grade.gB { background: var(--amber); } .grade.gC { background: var(--down); }
+  .checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+  .checks .ic { display: inline-block; width: 16px; font-weight: 700; }
+  #jrCheck { padding: 8px; border-bottom: 1px solid var(--line); }
+  .mood { background: #000; border: 0; padding: 5px 8px; font: inherit; font-weight: 700; font-size: 11px; color: var(--text); }
+
   /* Toasts and install button */
   .toasts { position: fixed; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 20; max-width: min(360px, calc(100vw - 24px)); }
   .toast { background: #0a0a0a; border: 1px solid var(--amber); padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.6); }
@@ -343,6 +351,7 @@
   <div class="clocks" id="clocks"></div>
   <div class="srcs" id="srcs" aria-label="Data sources"></div>
   <button class="install" id="installBtn" type="button" hidden>⤓ INSTALL APP</button>
+  <button class="mood" id="moodBtn" type="button" title="Market mood">MOOD …</button>
   <button class="gear" id="gearBtn" type="button" title="Settings: keys, data sources, backup">⚙ SETTINGS</button>
 </header>
 
@@ -694,9 +703,11 @@
           <label>Target<input id="jrTarget" type="number" step="any" min="0"></label>
           <label>Setup<input id="jrSetup" placeholder="breakout" list="jrSetups"></label>
           <label style="flex:1 1 200px">Why I'm taking it<input id="jrNotes" style="width:100%" placeholder="Broke prior-day high on 2× volume"></label>
-          <button type="submit">LOG TRADE</button>
+          <button type="button" id="jrAtr" title="Stop 1.5× daily ATR from entry, target 2R">ATR STOP</button>
+          <button type="submit" id="jrLogBtn">LOG TRADE</button>
           <datalist id="jrSetups"></datalist>
         </form>
+        <div id="jrCheck"><div class="muted">Fill in symbol, entry, stop and target to see the pre-trade checklist.</div></div>
         <div class="scroll">
           <div class="amber" style="font-weight:700;margin-bottom:4px">OPEN TRADES</div>
           <div id="jrOpen"></div>
@@ -800,6 +811,7 @@
       <tr><td>RES</td><td>Earnings calendar, analyst ratings, insider trades</td></tr>
       <tr><td>PORT · BUY AAPL 10 @ 180 · SELL AAPL 5</td><td>Portfolio with live profit and loss</td></tr>
       <tr><td>ALERT BTCUSD &gt; 70000</td><td>Price alert (notification, sound, optional AI explanation)</td></tr>
+      <tr><td>MOOD (header)</td><td>Risk-on / risk-off for stocks (S&amp;P 500) and crypto (BTC); click for details</td></tr>
       <tr><td>JRNL · LOG LONG NVDA 10 @ 130 STOP 125 TARGET 145 · CLOSE NVDA @ 140</td><td>Trade journal with stats, equity curve, risk rules, CSV export and full backup</td></tr>
       <tr><td>ALRT · CALC</td><td>Alerts list and position-size calculator</td></tr>
       <tr><td>/</td><td>Focus the command line</td></tr>
@@ -1076,8 +1088,14 @@
     if ((m = c.match(/^LOG (LONG|SHORT|BUY|SELL) (\S+) ([\d.]+) ?(?:@|AT) ?([\d.]+)(?: STOP ([\d.]+))?(?: (?:TARGET|TP) ([\d.]+))?$/))) {
       const sym = normalize(m[2]), side = /LONG|BUY/.test(m[1]) ? "long" : "short", entry = +m[4], stop = m[5] ? +m[5] : NaN;
       if (isNum(stop) && (side === "long" ? stop >= entry : stop <= entry)) return toast("Journal", `For a ${side}, the stop goes ${side === "long" ? "below" : "above"} the entry.`);
-      logTrade({ sym, side, qty: +m[3], entry, stop, target: m[6] ? +m[6] : NaN, setup: "", notes: "" });
-      return showView("jrnl");
+      const t = { sym, side, qty: +m[3], entry, stop, target: m[6] ? +m[6] : NaN };
+      showView("jrnl");
+      evaluateTrade(t).then((res) => {
+        const failed = res.checks.filter((c) => c.status === "fail").map((c) => c.label);
+        logTrade({ ...t, setup: "", notes: "", grade: res.grade, failed });
+        if (res.grade === "C") toast("Logged a C-grade trade", "Failed: " + failed.join(", ") + ".", "alert");
+      });
+      return;
     }
     if ((m = c.match(/^CLOSE (\S+)(?: ?(?:@|AT) ?([\d.]+))?$/))) {
       const sym = normalize(m[1]);
@@ -2352,6 +2370,12 @@
   }
   function accountSize() { return +rules.acct || +$("cAcct").value || 0; }
 
+  function gradeCell(x) {
+    const c = el("td");
+    if (x.grade) { const g = el("span", "grade g" + x.grade, x.grade); g.title = x.failed && x.failed.length ? "Failed: " + x.failed.join(", ") : "Passed every hard check"; c.append(g); }
+    else c.append(el("span", "muted", "—"));
+    return c;
+  }
   function logTrade(t) {
     const risk = isNum(t.stop) && t.stop > 0 ? Math.abs(t.entry - t.stop) * t.qty : NaN;
     const acct = accountSize();
@@ -2414,7 +2438,7 @@
     else {
       const t = el("table", "t");
       const hr = el("tr");
-      [["SYMBOL"], ["SIDE"], ["QTY", 1], ["ENTRY", 1], ["STOP", 1], ["LAST", 1], ["DATA"], ["P&L", 1], ["R", 1], ["CLOSE AT"]].forEach(([h, r]) => hr.append(th(h, r)));
+      [["SYMBOL"], ["GRADE"], ["SIDE"], ["QTY", 1], ["ENTRY", 1], ["STOP", 1], ["LAST", 1], ["DATA"], ["P&L", 1], ["R", 1], ["CLOSE AT"]].forEach(([h, r]) => hr.append(th(h, r)));
       t.append(hr);
       for (const x of open) {
         const last = px.get(x.sym)?.price;
@@ -2436,7 +2460,7 @@
         del.addEventListener("click", () => { journal = journal.filter((y) => y.id !== x.id); saveJournal(); });
         const cc = el("td"); cc.append(inp, " ", btn, del);
         const sym = td(bareTicker(x.sym), "amber"); sym.style.cursor = "pointer"; sym.addEventListener("click", () => run(x.sym));
-        tr.append(sym, td(x.side.toUpperCase(), x.side === "long" ? "up" : "down"), td(String(x.qty), "r"), td(fmt(x.entry), "r"), td(isNum(x.stop) ? fmt(x.stop) : "—", "r"),
+        tr.append(sym, gradeCell(x), td(x.side.toUpperCase(), x.side === "long" ? "up" : "down"), td(String(x.qty), "r"), td(fmt(x.entry), "r"), td(isNum(x.stop) ? fmt(x.stop) : "—", "r"),
           td(isNum(last) ? fmt(last) : "—", "r"), freshCell(x.sym), td(fmtUsd(pnl), "r " + signCls(pnl)), td(isNum(r) ? r.toFixed(2) + "R" : "—", "r " + signCls(r)), cc);
         t.append(tr);
         if (x.notes) { const n = el("tr"); const c = td("↳ " + x.notes, "muted"); c.colSpan = 10; c.className = "muted wrap"; n.append(c); t.append(n); }
@@ -2449,7 +2473,7 @@
     else {
       const t = el("table", "t");
       const hr = el("tr");
-      [["CLOSED"], ["SYMBOL"], ["SIDE"], ["QTY", 1], ["ENTRY", 1], ["EXIT", 1], ["P&L", 1], ["R", 1], ["SETUP"], ["NOTES"], [""]].forEach(([h, r]) => hr.append(th(h, r)));
+      [["CLOSED"], ["SYMBOL"], ["GRADE"], ["SIDE"], ["QTY", 1], ["ENTRY", 1], ["EXIT", 1], ["P&L", 1], ["R", 1], ["SETUP"], ["NOTES"], [""]].forEach(([h, r]) => hr.append(th(h, r)));
       t.append(hr);
       [...closed].reverse().slice(0, 300).forEach((x) => {
         const pnl = tradePnl(x, x.exit), r = tradeR(x, x.exit);
@@ -2458,7 +2482,7 @@
         del.addEventListener("click", () => { journal = journal.filter((y) => y.id !== x.id); saveJournal(); });
         const dc = el("td"); dc.append(del);
         const tr = el("tr");
-        tr.append(td(new Date(x.closed).toLocaleDateString([], { month: "short", day: "numeric" })), td(bareTicker(x.sym), "amber"), td(x.side.toUpperCase(), x.side === "long" ? "up" : "down"),
+        tr.append(td(new Date(x.closed).toLocaleDateString([], { month: "short", day: "numeric" })), td(bareTicker(x.sym), "amber"), gradeCell(x), td(x.side.toUpperCase(), x.side === "long" ? "up" : "down"),
           td(String(x.qty), "r"), td(fmt(x.entry), "r"), td(fmt(x.exit), "r"), td(fmtUsd(pnl), "r " + signCls(pnl)), td(isNum(r) ? r.toFixed(2) + "R" : "—", "r " + signCls(r)),
           td(x.setup || "—"), td(x.notes || "", "wrap muted"), dc);
         t.append(tr);
@@ -2481,7 +2505,7 @@
       t.style.marginTop = "10px";
       return t;
     };
-    $("jrBreak").replaceChildren(...(closed.length ? [table("SETUP", group((x) => x.setup)), table("SYMBOL", group((x) => bareTicker(x.sym)))] : []));
+    $("jrBreak").replaceChildren(...(closed.length ? [table("GRADE", group((x) => x.grade || "(none)")), table("SETUP", group((x) => x.setup)), table("SYMBOL", group((x) => bareTicker(x.sym)))] : []));
     drawCurve(closed);
     ["acct", "daily", "risk", "trades"].forEach((k) => { const i = $("rl" + k[0].toUpperCase() + k.slice(1)); if (document.activeElement !== i) i.value = rules[k] ?? (k === "acct" ? $("cAcct").value : ""); });
   }
@@ -2542,15 +2566,30 @@
   }));
   setInterval(() => { checkRules(); if (view === "jrnl") renderJournal(); }, 30_000);
 
-  $("jrForm").addEventListener("submit", (e) => {
+  $("jrForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const sym = normalize($("jrSym").value), qty = +$("jrQty").value, entry = +$("jrEntry").value;
-    if (!sym || !(qty > 0) || !(entry > 0)) return toast("Journal", "Enter a symbol, a quantity and an entry price above zero.");
-    const stop = $("jrStop").value ? +$("jrStop").value : NaN, target = $("jrTarget").value ? +$("jrTarget").value : NaN;
-    const side = $("jrSide").value;
-    if (isNum(stop) && (side === "long" ? stop >= entry : stop <= entry)) return toast("Journal", `For a ${side}, the stop goes ${side === "long" ? "below" : "above"} the entry.`);
-    logTrade({ sym, side, qty, entry, stop, target, setup: $("jrSetup").value.trim(), notes: $("jrNotes").value.trim() });
+    const t = formTrade();
+    if (!t || !(t.qty > 0)) return toast("Journal", "Enter a symbol, a quantity and an entry price above zero.");
+    if (isNum(t.stop) && (t.side === "long" ? t.stop >= t.entry : t.stop <= t.entry)) return toast("Journal", `For a ${t.side}, the stop goes ${t.side === "long" ? "below" : "above"} the entry.`);
+    let res = lastCheck && lastCheck.key === JSON.stringify(t) ? lastCheck : null;
+    if (!res) {
+      $("jrCheck").replaceChildren(el("div", "muted", "Checking…"));
+      res = await evaluateTrade(t);
+      lastCheck = { key: JSON.stringify(t), ...res };
+      renderChecklist($("jrCheck"), res);
+    }
+    const failed = res.checks.filter((c) => c.status === "fail").map((c) => c.label);
+    if (res.grade === "C" && !cConfirm) {
+      cConfirm = true;
+      $("jrLogBtn").textContent = "LOG ANYWAY (C GRADE)";
+      return toast("C-grade trade", "Failed: " + failed.join(", ") + ". Press LOG ANYWAY to log it regardless.", "alert");
+    }
+    logTrade({ ...t, setup: $("jrSetup").value.trim(), notes: $("jrNotes").value.trim(), grade: res.grade, failed });
     $("jrForm").reset();
+    cConfirm = false;
+    $("jrLogBtn").textContent = "LOG TRADE";
+    lastCheck = null;
+    $("jrCheck").replaceChildren(el("div", "muted", "Fill in symbol, entry, stop and target to see the pre-trade checklist."));
   });
   document.querySelectorAll("#jrTabs button[data-per]").forEach((b) => b.addEventListener("click", () => { jrPer = b.dataset.per; renderJournal(); }));
 
@@ -3390,6 +3429,160 @@
   $("btForm").addEventListener("submit", (e) => { e.preventDefault(); runBt(); });
   $("btCmpSetups").addEventListener("click", () => compareBt("setups"));
   $("btCmpTf").addEventListener("click", () => compareBt("tf"));
+
+  // ───────────────────────── Market mood (risk-on / risk-off) ─────────────────────────
+  // Stocks: SPY's 5-day, 13-week and 26-week returns, its place in the 52-week range
+  // and today's move (Finnhub). Crypto: BTC's daily trend and 30-day return (Binance).
+  const mood = { stocks: { state: "unknown", detail: "Add a free Finnhub key in ⚙ Settings." }, crypto: { state: "unknown", detail: "Loading…" }, at: 0 };
+  async function refreshMood() {
+    try {
+      const d = await getCandles("BINANCE:BTCUSDT", "D", 260);
+      if (!d.error) {
+        const i = d.c.length - 1, tr = trendAt(d, i), r30 = (d.c[i] / d.c[i - 30] - 1) * 100;
+        const pts = (tr > 0 ? 2 : tr < 0 ? -2 : 0) + (r30 > 0 ? 1 : -1);
+        mood.crypto = { state: pts >= 2 ? "on" : pts <= -2 ? "off" : "mixed", detail: `BTC ${tr > 0 ? "uptrend" : tr < 0 ? "downtrend" : "no clear trend"} on the daily chart (EMA20/50), ${fmtPct(r30)} over 30 days.` };
+      } else mood.crypto = { state: "unknown", detail: d.error };
+    } catch { mood.crypto = { state: "unknown", detail: "Couldn't load BTC history." }; }
+    if (finnhubKey()) {
+      const [m, q] = await Promise.all([fh("stock/metric?symbol=SPY&metric=all"), fh("quote?symbol=SPY")]);
+      const k = (m && m.metric) || {};
+      const r5 = k["5DayPriceReturnDaily"], r13 = k["13WeekPriceReturnDaily"], r26 = k["26WeekPriceReturnDaily"], hi = k["52WeekHigh"], lo = k["52WeekLow"];
+      if (q && q.c && isNum(r13)) {
+        const pos = isNum(hi) && isNum(lo) && hi > lo ? (q.c - lo) / (hi - lo) : NaN;
+        const votes = [r5 > 0, r13 > 0, r26 > 0, pos > 0.5, q.dp > -1];
+        const up = votes.filter(Boolean).length;
+        mood.stocks = { state: up >= 4 ? "on" : up <= 1 ? "off" : "mixed", detail: `S&P 500 (SPY): ${fmtPct(q.dp)} today, ${fmtPct(r5)} over 5 days, ${fmtPct(r13)} over 13 weeks, ${fmtPct(r26)} over 26 weeks, ${isNum(pos) ? Math.round(pos * 100) + "% of its 52-week range" : ""}.` };
+      } else mood.stocks = { state: "unknown", detail: "Finnhub didn't return SPY data." };
+    } else mood.stocks = { state: "unknown", detail: "Add a free Finnhub key in ⚙ Settings for the stock-market mood." };
+    mood.at = Date.now();
+    renderMood();
+  }
+  const MOOD_TXT = { on: ["RISK-ON", "up"], mixed: ["MIXED", "amber"], off: ["RISK-OFF", "down"], unknown: ["?", "muted"] };
+  function renderMood() {
+    const b = $("moodBtn"), [st, sc] = MOOD_TXT[mood.stocks.state], [ct, cc] = MOOD_TXT[mood.crypto.state];
+    b.replaceChildren(el("span", "muted", "MOOD "), el("span", sc, "STK " + st), " ", el("span", cc, "CRY " + ct));
+    b.title = `Stocks: ${mood.stocks.detail}\nCrypto: ${mood.crypto.detail}\nTrading with the market's direction raises the odds; most failed trades fight it.`;
+  }
+  const moodFor = (sym) => (assetClass(sym) === "crypto" ? mood.crypto : mood.stocks);
+
+  // ───────────────────────── Event risk (earnings, CPI, Fed, jobs) ─────────────────────────
+  let econCache = { at: 0, rows: null };
+  async function eventRisk(sym) {
+    const out = [];
+    let known = true;
+    if (assetClass(sym) === "stock" && finnhubKey()) {
+      const r = await fh(`calendar/earnings?from=${todayPlus(0)}&to=${todayPlus(2)}&symbol=${encodeURIComponent(bareTicker(sym))}`);
+      const e = ((r && r.earningsCalendar) || []).find((x) => x.symbol === bareTicker(sym) && x.date <= todayPlus(1));
+      if (e) out.push(`${bareTicker(sym)} reports earnings ${e.date === todayPlus(0) ? "today" : "tomorrow"}${e.hour === "bmo" ? " before the open" : e.hour === "amc" ? " after the close" : ""}`);
+    } else if (assetClass(sym) === "stock") known = false;
+    if (Date.now() - econCache.at > 30 * 60_000) {
+      const r = finnhubKey() ? await fh(`calendar/economic?from=${todayPlus(0)}&to=${todayPlus(1)}`) : null;
+      econCache = { at: Date.now(), rows: r && Array.isArray(r.economicCalendar) ? r.economicCalendar : null };
+    }
+    if (econCache.rows) {
+      const soon = Date.now() + 24 * 36e5;
+      econCache.rows.filter((x) => x.country === "US" && /high/i.test(String(x.impact)) && new Date(String(x.time).replace(" ", "T") + "Z").getTime() <= soon)
+        .slice(0, 3).forEach((x) => out.push(`${x.event} (${String(x.time).slice(5, 16)} UTC)`));
+    } else known = false;
+    return { events: out, known };
+  }
+
+  // ───────────────────────── Pre-trade checklist and grade ─────────────────────────
+  // A = no failed check and at most one unconfirmed; B = no failed check; C = at least one failed check.
+  async function evaluateTrade(t) {
+    const checks = [], add = (id, label, status, detail) => checks.push({ id, label, status, detail });
+    const want = t.side === "short" ? -1 : 1, word = want > 0 ? "up" : "down";
+    // 1. Trend on daily and 4-hour charts
+    const [dD, d4] = await Promise.all([getCandles(t.sym, "D", 260).catch(() => ({ error: 1 })), getCandles(t.sym, "240", 260).catch(() => ({ error: 1 }))]);
+    if (!dD.error && !d4.error) {
+      const a = trendAt(dD, dD.c.length - 1), b = trendAt(d4, d4.c.length - 1);
+      const name = (x) => (x > 0 ? "up" : x < 0 ? "down" : "sideways");
+      add("trend", "Trend agrees (daily & 4h)", a === want && b === want ? "pass" : a === -want || b === -want ? "fail" : "warn", `Daily ${name(a)}, 4-hour ${name(b)}; you want ${word}.`);
+    } else if (assetClass(t.sym) === "stock" && finnhubKey()) {
+      const m = await fh(`stock/metric?symbol=${encodeURIComponent(bareTicker(t.sym))}&metric=all`), r13 = m && m.metric && m.metric["13WeekPriceReturnDaily"];
+      add("trend", "Trend agrees", isNum(r13) ? (Math.sign(r13) === want ? "warn" : "fail") : "unknown", isNum(r13) ? `13-week return ${fmtPct(r13)}. Intraday trend needs price history your plan doesn't include, so this can't be fully confirmed.` : "No trend data for this symbol.");
+    } else add("trend", "Trend agrees", "unknown", "No price history for this symbol.");
+    // 2. Order flow
+    if (flow.sym === t.sym && flow.trades.length >= 30) {
+      const st = flowStats(900), ok = want > 0 ? st.buyPct >= 55 : st.buyPct <= 45, bad = want > 0 ? st.buyPct <= 45 : st.buyPct >= 55;
+      add("flow", "Order flow confirms", ok ? "pass" : bad ? "fail" : "warn", `Last 15 min: buyers ${st.buyPct.toFixed(0)}% of traded value, price ${fmtPct(st.chg)}.`);
+    } else add("flow", "Order flow confirms", "unknown", "No live trade flow for this symbol yet. Load it on screen for a few minutes (ORDER FLOW).");
+    // 3. Reward vs risk
+    const riskPer = isNum(t.stop) && t.stop > 0 ? Math.abs(t.entry - t.stop) : NaN;
+    const rr = isNum(riskPer) && isNum(t.target) && t.target > 0 ? ((t.target - t.entry) * want) / riskPer : NaN;
+    add("rr", "Reward at least 2× risk", !isNum(riskPer) ? "fail" : !isNum(rr) ? "fail" : rr >= 2 ? "pass" : rr >= 1.5 ? "warn" : "fail",
+      !isNum(riskPer) ? "No stop-loss set." : !isNum(rr) ? "No target set." : rr <= 0 ? "Target is on the wrong side of the entry." : `Reward : risk = ${rr.toFixed(2)} : 1.`);
+    // 4. Risk within the rule
+    const acct = accountSize(), limit = +rules.risk > 0 ? +rules.risk : 1;
+    if (isNum(riskPer) && acct > 0 && t.qty > 0) {
+      const pct = ((riskPer * t.qty) / acct) * 100;
+      add("risk", `Risk within ${limit}% of account`, pct <= limit ? "pass" : pct <= limit * 1.5 ? "warn" : "fail", `Risks ${fmtUsd(riskPer * t.qty)} = ${pct.toFixed(2)}% of ${fmtUsd(acct)}.`);
+    } else add("risk", `Risk within ${limit}% of account`, isNum(riskPer) ? "unknown" : "fail", isNum(riskPer) ? "Set your account size in the journal's RISK RULES." : "No stop-loss, so the risk is unlimited.");
+    // 5. Event risk in the next 24 hours
+    const ev = await eventRisk(t.sym);
+    add("events", "No big event in 24 hours", ev.events.length ? "fail" : ev.known ? "pass" : "unknown",
+      ev.events.length ? ev.events.join("; ") + "." : ev.known ? "No earnings or high-impact US releases found." : "Couldn't check every calendar on your plan. Look at ECO · CALENDAR on MAIN.");
+    // 6. Data quality
+    const f = freshness(t.sym);
+    add("data", "Price data is live", !f ? "unknown" : f.cls === "up" ? "pass" : f.cls === "amber" || f.cls === "muted" ? "warn" : "fail", f ? `${f.txt}: ${f.tip}` : "No live price for this symbol.");
+    // 7. Market mood
+    const md = moodFor(t.sym), aligned = want > 0 ? md.state === "on" : md.state === "off", against = want > 0 ? md.state === "off" : md.state === "on";
+    add("mood", "Overall market supports it", md.state === "unknown" ? "unknown" : aligned ? "pass" : against ? "fail" : "warn", md.detail);
+    const fails = checks.filter((c) => c.status === "fail").length, soft = checks.filter((c) => c.status === "warn" || c.status === "unknown").length;
+    return { checks, grade: fails ? "C" : soft <= 1 ? "A" : "B" };
+  }
+  const ICON = { pass: ["✓", "up"], warn: ["!", "amber"], fail: ["✗", "down"], unknown: ["?", "muted"] };
+  function renderChecklist(host, res) {
+    const head = el("div", "row");
+    head.style.cssText = "display:flex;gap:10px;align-items:center;margin-bottom:6px";
+    head.append(el("span", "grade g" + res.grade, res.grade), el("b", "", res.grade === "A" ? "A-GRADE: everything lines up." : res.grade === "B" ? "B-GRADE: nothing fails, but some checks are weak or unconfirmed." : "C-GRADE: at least one check fails. Think twice."));
+    const ul = el("ul", "checks");
+    for (const c of res.checks) {
+      const [ic, cls] = ICON[c.status], li = el("li");
+      li.append(el("span", cls + " ic", ic), el("span", "", c.label), el("span", "muted", " · " + c.detail));
+      ul.append(li);
+    }
+    host.replaceChildren(head, ul);
+  }
+  let checkSeq = 0, lastCheck = null, cConfirm = false;
+  function formTrade() {
+    const sym = normalize($("jrSym").value), qty = +$("jrQty").value, entry = +$("jrEntry").value;
+    if (!sym || !(entry > 0)) return null;
+    return { sym, side: $("jrSide").value, qty, entry, stop: $("jrStop").value ? +$("jrStop").value : NaN, target: $("jrTarget").value ? +$("jrTarget").value : NaN };
+  }
+  let checkTimer = null;
+  function scheduleCheck() {
+    clearTimeout(checkTimer);
+    cConfirm = false;
+    $("jrLogBtn").textContent = "LOG TRADE";
+    checkTimer = setTimeout(async () => {
+      const t = formTrade();
+      if (!t) { $("jrCheck").replaceChildren(el("div", "muted", "Fill in symbol, entry, stop and target to see the pre-trade checklist.")); lastCheck = null; return; }
+      const seq = ++checkSeq;
+      $("jrCheck").replaceChildren(el("div", "muted", "Checking…"));
+      const res = await evaluateTrade(t);
+      if (seq !== checkSeq) return;
+      lastCheck = { key: JSON.stringify(t), ...res };
+      renderChecklist($("jrCheck"), res);
+    }, 600);
+  }
+  ["jrSide", "jrSym", "jrQty", "jrEntry", "jrStop", "jrTarget"].forEach((id) => $(id).addEventListener("input", scheduleCheck));
+  // ATR stop: 1.5 × daily ATR from the entry, target at 2R.
+  $("jrAtr").addEventListener("click", async () => {
+    const t = formTrade();
+    if (!t) return toast("Journal", "Enter the symbol and entry price first.");
+    const d = await getCandles(t.sym, "D", 60);
+    if (d.error) return toast("ATR stop", d.error);
+    const atr = indicators(d).atr.at(-1), s = t.side === "short" ? -1 : 1;
+    $("jrStop").value = +(t.entry - s * 1.5 * atr).toPrecision(6);
+    $("jrTarget").value = +(t.entry + s * 3 * atr).toPrecision(6);
+    toast("ATR stop", `Daily ATR is ${fmt(atr)}. Stop 1.5× ATR away, target 2R. Adjust to real support and resistance.`);
+    scheduleCheck();
+  });
+  setInterval(() => { if (view === "jrnl" || view === "scan") renderMood(); }, 60_000);
+  setInterval(refreshMood, 5 * 60_000);
+  setTimeout(refreshMood, 1500);
+  $("moodBtn").addEventListener("click", () => toast("Market mood", `Stocks: ${mood.stocks.detail} Crypto: ${mood.crypto.detail}`));
 
   // Hooks into symbol changes and views.
   function afterSymbol() {
