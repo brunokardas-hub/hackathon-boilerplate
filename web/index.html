@@ -358,6 +358,7 @@
   <button data-cmd="RES" data-view="res">RESEARCH</button>
   <button data-cmd="FLOW" data-view="flow">ORDER FLOW</button>
   <button data-cmd="PORT" data-view="port">PORTFOLIO</button>
+  <button data-cmd="BT" data-view="bt">BACKTEST</button>
   <button data-cmd="JRNL" data-view="jrnl">JOURNAL</button>
   <button data-cmd="ALRT" data-view="tools">ALERTS</button>
   <button data-cmd="AI" data-view="ai">AI ANALYST</button>
@@ -631,6 +632,38 @@
   </div>
 </section>
 
+<section class="view" id="v-bt">
+  <div class="full">
+    <div class="subtabs"><span class="title">BACKTEST · PROVE THE STRATEGY FIRST</span><span class="muted" id="btData"></span><span style="margin-left:auto" class="muted">Crypto here (Binance history). Stocks: tradingview/terminal_strategy.pine on TradingView.</span></div>
+    <form class="form" id="btForm" autocomplete="off">
+      <label>Symbol<input id="btSym" placeholder="BTCUSD"></label>
+      <label>Timeframe<select id="btTf"><option value="60">1 hour</option><option value="240" selected>4 hours</option><option value="D">1 day</option></select></label>
+      <label>History<select id="btBars"><option value="1000">1,000 bars</option><option value="3000" selected>3,000 bars</option><option value="5000">5,000 bars</option></select></label>
+      <label>Setup<select id="btSetup">
+        <option value="breakout">Breakout: 20-bar high + volume</option>
+        <option value="pullback">Pullback to EMA20 in a trend</option>
+        <option value="volspike">Volume spike with trend</option>
+        <option value="score">Score crosses 70 / 30</option>
+      </select></label>
+      <label>Direction<select id="btDir"><option value="long">Long only</option><option value="short">Short only</option><option value="both">Both</option></select></label>
+      <label>Stop (× ATR)<input id="btStop" type="number" step="0.1" min="0.3" value="1.5"></label>
+      <label>Target (R)<input id="btTarget" type="number" step="0.5" min="0.5" value="2"></label>
+      <label>Exit<select id="btExit"><option value="target">Fixed target</option><option value="trail">Trailing stop</option><option value="partial">Half at 1R, rest at target</option></select></label>
+      <label>Max bars held<input id="btMax" type="number" step="1" min="1" value="40"></label>
+      <label>Commission % / side<input id="btComm" type="number" step="0.01" min="0" value="0.1"></label>
+      <label>Slippage %<input id="btSlip" type="number" step="0.01" min="0" value="0.05"></label>
+      <label>Risk per trade %<input id="btRisk" type="number" step="0.1" min="0.1" value="1"></label>
+      <label>Out-of-sample %<select id="btOos"><option value="20">last 20%</option><option value="30" selected>last 30%</option><option value="40">last 40%</option></select></label>
+      <button type="submit">▶ RUN BACKTEST</button>
+      <button type="button" id="btCmpSetups">COMPARE SETUPS</button>
+      <button type="button" id="btCmpTf">COMPARE TIMEFRAMES</button>
+    </form>
+    <div class="scroll" style="flex:1;overflow:auto;padding:8px" id="btOut">
+      <div class="msgline">Pick a crypto symbol and a setup, then press RUN. The test enters on the bar after each signal, checks the stop before the target when both are hit in the same bar, and charges commission and slippage on every fill. The last part of the history is held back as out-of-sample: tune the settings while looking only at the in-sample results, then trust the setup only if the out-of-sample results hold up too.</div>
+    </div>
+  </div>
+</section>
+
 <section class="view" id="v-jrnl">
   <div class="full">
     <div class="subtabs" id="jrTabs">
@@ -762,6 +795,7 @@
       <tr><td>MAX</td><td>Chart fills the screen (Esc to exit)</td></tr>
       <tr><td>ADD TSLA · DEL TSLA</td><td>Add to / remove from My list (monitor and ticker strip)</td></tr>
       <tr><td>GRID · GRID 2 · GRID 4 NVDA SPY QQQ SMH</td><td>Multi-chart: one symbol on several timeframes, or several symbols</td></tr>
+      <tr><td>BT · BACKTEST</td><td>Test a setup on years of history with costs, in-sample vs out-of-sample</td></tr>
       <tr><td>FLOW</td><td>Order flow: buy vs sell pressure, large trades, order book walls, 13F holders and market makers</td></tr>
       <tr><td>RES</td><td>Earnings calendar, analyst ratings, insider trades</td></tr>
       <tr><td>PORT · BUY AAPL 10 @ 180 · SELL AAPL 5</td><td>Portfolio with live profit and loss</td></tr>
@@ -1036,6 +1070,7 @@
     }
     if (["RES", "ERN", "ANR", "INS", "EE"].includes(c)) return showView("res");
     if (["FLOW", "MM", "ORDERFLOW", "ORDER FLOW", "BOOK"].includes(c)) return showView("flow");
+    if (["BT", "BACKTEST", "TEST"].includes(c)) return showView("bt");
     if (["PORT", "PF", "PORTFOLIO"].includes(c)) return showView("port");
     if (["JRNL", "JOURNAL", "LOG", "TRADES"].includes(c)) return showView("jrnl");
     if ((m = c.match(/^LOG (LONG|SHORT|BUY|SELL) (\S+) ([\d.]+) ?(?:@|AT) ?([\d.]+)(?: STOP ([\d.]+))?(?: (?:TARGET|TP) ([\d.]+))?$/))) {
@@ -3077,6 +3112,285 @@
     renderFlow();
   }
 
+  // ───────────────────────── History, indicators, backtester ─────────────────────────
+  const BIN_IV = { 15: "15m", 60: "1h", 240: "4h", D: "1d", W: "1w" };
+  const TF_MS = { 15: 9e5, 60: 36e5, 240: 144e5, D: 864e5, W: 6048e5 };
+  const candleCache = new Map();
+  // Returns { t, o, h, l, c, v } arrays, oldest first, or { error } when no free history exists.
+  async function getCandles(sym, tf, count) {
+    const key = `${sym}|${tf}|${count}`, hit = candleCache.get(key);
+    if (hit && Date.now() - hit.at < 60_000) return hit.d;
+    let d;
+    const pair = binSym(sym);
+    if (pair) {
+      const rows = [];
+      let end = Date.now();
+      while (rows.length < count) {
+        const lim = Math.min(1000, count - rows.length);
+        const r = await fetch(`${BIN}klines?symbol=${pair}&interval=${BIN_IV[tf]}&limit=${lim}&endTime=${end}`);
+        if (!r.ok) return { error: `Binance returned ${r.status} for ${pair}.` };
+        const k = await r.json();
+        if (!k.length) break;
+        rows.unshift(...k);
+        end = k[0][0] - 1;
+        if (k.length < lim) break;
+      }
+      d = { t: rows.map((x) => x[0]), o: rows.map((x) => +x[1]), h: rows.map((x) => +x[2]), l: rows.map((x) => +x[3]), c: rows.map((x) => +x[4]), v: rows.map((x) => +x[5]), src: "Binance" };
+    } else if (assetClass(sym) === "stock") {
+      if (!finnhubKey()) return { error: "Stock history needs a Finnhub key, and Finnhub only includes it on paid plans. For stocks, use tradingview/terminal_strategy.pine on TradingView." };
+      const res = tf === "240" ? "60" : tf, n = tf === "240" ? count * 4 : count;
+      const to = Math.floor(Date.now() / 1000), from = to - Math.ceil((n * (TF_MS[res] || 864e5)) / 1000) * (res === "D" ? 1.5 : 2.5);
+      const r = await fh(`stock/candle?symbol=${encodeURIComponent(bareTicker(sym))}&resolution=${res}&from=${Math.floor(from)}&to=${to}`);
+      if (!r || r.s !== "ok" || !Array.isArray(r.c)) return { error: "Your Finnhub plan doesn't include stock price history. For stocks, use tradingview/terminal_strategy.pine on TradingView." };
+      d = { t: r.t.map((x) => x * 1000), o: r.o, h: r.h, l: r.l, c: r.c, v: r.v, src: "Finnhub" };
+      if (tf === "240") { // build 4-hour bars from hourly ones
+        const g = { t: [], o: [], h: [], l: [], c: [], v: [], src: d.src };
+        for (let i = 0; i < d.t.length; i++) {
+          const b = Math.floor(d.t[i] / 144e5);
+          if (!g.t.length || Math.floor(g.t.at(-1) / 144e5) !== b) { g.t.push(d.t[i]); g.o.push(d.o[i]); g.h.push(d.h[i]); g.l.push(d.l[i]); g.c.push(d.c[i]); g.v.push(d.v[i]); }
+          else { const j = g.t.length - 1; g.h[j] = Math.max(g.h[j], d.h[i]); g.l[j] = Math.min(g.l[j], d.l[i]); g.c[j] = d.c[i]; g.v[j] += d.v[i]; }
+        }
+        d = g;
+      }
+    } else {
+      return { error: "Free price history covers crypto (and stocks on a paid Finnhub plan). Use TradingView's strategy tester for this symbol." };
+    }
+    candleCache.set(key, { at: Date.now(), d });
+    return d;
+  }
+
+  const IND = {
+    ema(a, n) { const k = 2 / (n + 1); let e = a[0]; return a.map((v, i) => (e = i ? v * k + e * (1 - k) : v)); },
+    sma(a, n) { const out = []; let s = 0; for (let i = 0; i < a.length; i++) { s += a[i]; if (i >= n) s -= a[i - n]; out.push(i >= n - 1 ? s / n : NaN); } return out; },
+    rsi(a, n = 14) {
+      const out = new Array(a.length).fill(NaN); let g = 0, l = 0;
+      for (let i = 1; i < a.length; i++) {
+        const d = a[i] - a[i - 1], up = Math.max(d, 0), dn = Math.max(-d, 0);
+        if (i <= n) { g += up / n; l += dn / n; if (i === n) out[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l); continue; }
+        g = (g * (n - 1) + up) / n; l = (l * (n - 1) + dn) / n; out[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l);
+      }
+      return out;
+    },
+    atr(h, l, c, n = 14) {
+      const out = new Array(c.length).fill(NaN); let a = 0;
+      for (let i = 1; i < c.length; i++) {
+        const tr = Math.max(h[i] - l[i], Math.abs(h[i] - c[i - 1]), Math.abs(l[i] - c[i - 1]));
+        if (i <= n) { a += tr / n; if (i === n) out[i] = a; } else { a = (a * (n - 1) + tr) / n; out[i] = a; }
+      }
+      return out;
+    },
+    // Highest/lowest of the previous n bars (excluding the current one).
+    prevHigh(a, n) { return a.map((_, i) => (i < n ? NaN : Math.max(...a.slice(i - n, i)))); },
+    prevLow(a, n) { return a.map((_, i) => (i < n ? NaN : Math.min(...a.slice(i - n, i)))); },
+  };
+  // Everything the setups and the checklist need, computed once per candle set.
+  function indicators(d) {
+    if (d.ind) return d.ind;
+    const c = d.c, e20 = IND.ema(c, 20), e50 = IND.ema(c, 50), e200 = IND.ema(c, 200);
+    const m12 = IND.ema(c, 12), m26 = IND.ema(c, 26), macd = m12.map((v, i) => v - m26[i]), sig = IND.ema(macd, 9);
+    const rsiS = IND.rsi(c), atr = IND.atr(d.h, d.l, c), volAvg = IND.sma(d.v, 20);
+    const hh20 = IND.prevHigh(d.h, 20), ll20 = IND.prevLow(d.l, 20);
+    const score = c.map((x, i) => {
+      if (i < 30) return NaN;
+      const lo = Math.min(...d.l.slice(Math.max(0, i - 251), i + 1)), hi = Math.max(...d.h.slice(Math.max(0, i - 251), i + 1));
+      const pos = hi > lo ? (x - lo) / (hi - lo) : 0.5, r = rsiS[i];
+      return (x > e200[i] ? 20 : 0) + (e20[i] > e50[i] ? 15 : 0) + (x > e50[i] ? 10 : 0) + (r >= 50 && r <= 70 ? 15 : r > 70 ? 8 : r >= 40 ? 5 : 0)
+        + (macd[i] - sig[i] > 0 ? 10 : 0) + (i >= 21 && x > c[i - 21] ? 15 : 0) + pos * 15;
+    });
+    d.ind = { e20, e50, e200, rsi: rsiS, atr, volAvg, hh20, ll20, score, hist: macd.map((v, i) => v - sig[i]) };
+    return d.ind;
+  }
+  const trendAt = (d, i) => { const k = indicators(d); return d.c[i] > k.e50[i] && k.e20[i] > k.e50[i] ? 1 : d.c[i] < k.e50[i] && k.e20[i] < k.e50[i] ? -1 : 0; };
+  // +1 long signal, -1 short signal, 0 nothing, on the close of bar i.
+  function signalAt(d, i, setup) {
+    const k = indicators(d), c = d.c[i], o = d.o[i], up = trendAt(d, i) === 1, dn = trendAt(d, i) === -1, vol = d.v[i] / k.volAvg[i];
+    if (setup === "breakout") return c > k.hh20[i] && vol >= 1.5 ? 1 : c < k.ll20[i] && vol >= 1.5 ? -1 : 0;
+    if (setup === "pullback") return up && d.l[i] <= k.e20[i] && c > k.e20[i] && c > o ? 1 : dn && d.h[i] >= k.e20[i] && c < k.e20[i] && c < o ? -1 : 0;
+    if (setup === "volspike") return vol >= 2 && c > o && c > k.e50[i] ? 1 : vol >= 2 && c < o && c < k.e50[i] ? -1 : 0;
+    if (setup === "score") return k.score[i - 1] <= 70 && k.score[i] > 70 ? 1 : k.score[i - 1] >= 30 && k.score[i] < 30 ? -1 : 0;
+    return 0;
+  }
+
+  function runBacktest(d, cfg) {
+    const k = indicators(d), n = d.c.length, warm = Math.min(220, Math.floor(n / 3));
+    const splitAt = Math.floor(n * (1 - cfg.oos / 100)), splitT = d.t[splitAt];
+    const trades = [], curve = [{ t: d.t[warm], eq: cfg.capital }];
+    let eq = cfg.capital, pos = null;
+    const slip = cfg.slip / 100, comm = cfg.comm / 100;
+    const close = (i, raw, reason, qty) => {
+      const px = raw * (1 - slip * pos.side), q = qty ?? pos.qty;
+      const pnl = (px - pos.entry) * q * pos.side - comm * (pos.entry * q + px * q);
+      eq += pnl;
+      pos.pnl += pnl; pos.qty -= q;
+      if (pos.qty <= 1e-12) {
+        trades.push({ entryT: pos.t, exitT: d.t[i], side: pos.side, entry: pos.entry, exit: px, pnl: pos.pnl, r: pos.pnl / pos.risk, bars: i - pos.i, reason, oos: pos.t >= splitT });
+        curve.push({ t: d.t[i], eq });
+        pos = null;
+      }
+    };
+    for (let i = warm; i < n; i++) {
+      if (pos && i >= pos.i) {
+        const o = d.o[i], h = d.h[i], l = d.l[i], s = pos.side;
+        const stopHit = s > 0 ? l <= pos.stop : h >= pos.stop;
+        if (stopHit) close(i, s > 0 ? Math.min(o, pos.stop) : Math.max(o, pos.stop), pos.stop === pos.entryRaw ? "breakeven" : pos.trailed ? "trail stop" : "stop");
+        if (pos && cfg.exit === "partial" && !pos.half && (s > 0 ? h >= pos.oneR : l <= pos.oneR)) {
+          close(i, s > 0 ? Math.max(o, pos.oneR) : Math.min(o, pos.oneR), "1R", pos.qty / 2);
+          if (pos) { pos.half = true; pos.stop = pos.entryRaw; }
+        }
+        if (pos && cfg.exit !== "trail" && (s > 0 ? h >= pos.target : l <= pos.target)) close(i, s > 0 ? Math.max(o, pos.target) : Math.min(o, pos.target), "target");
+        if (pos && i - pos.i + 1 >= cfg.maxBars) close(i, d.c[i], "time");
+        if (pos && cfg.exit === "trail") {
+          const t = d.c[i] - s * cfg.stopMult * k.atr[i];
+          if (s > 0 ? t > pos.stop : t < pos.stop) { pos.stop = t; pos.trailed = true; }
+        }
+      }
+      if (!pos && i < n - 1 && isNum(k.atr[i])) {
+        const sig = signalAt(d, i, cfg.setup);
+        if (sig && (cfg.dir === "both" || (cfg.dir === "long" ? sig > 0 : sig < 0))) {
+          const raw = d.o[i + 1], entry = raw * (1 + slip * sig), dist = cfg.stopMult * k.atr[i];
+          const stop = raw - sig * dist, riskUsd = (eq * cfg.risk) / 100;
+          let qty = riskUsd / Math.abs(entry - stop);
+          qty = Math.min(qty, eq / entry); // no leverage
+          if (qty > 0) pos = { i: i + 1, t: d.t[i + 1], side: sig, entry, entryRaw: raw, stop, target: raw + sig * cfg.targetR * dist, oneR: raw + sig * dist, qty, risk: qty * Math.abs(entry - stop), pnl: 0 };
+        }
+      }
+    }
+    if (pos) close(n - 1, d.c[n - 1], "end of data");
+    return { trades, curve, splitT, start: d.t[warm], end: d.t[n - 1] };
+  }
+  function btMetrics(trades, startEq) {
+    const n = trades.length, wins = trades.filter((t) => t.pnl > 0), losses = trades.filter((t) => t.pnl <= 0);
+    const gp = wins.reduce((a, t) => a + t.pnl, 0), gl = -losses.reduce((a, t) => a + t.pnl, 0);
+    let eq = startEq, peak = startEq, dd = 0, streak = 0, worst = 0;
+    for (const t of trades) { eq += t.pnl; peak = Math.max(peak, eq); dd = Math.min(dd, (eq - peak) / peak); streak = t.pnl <= 0 ? streak + 1 : 0; worst = Math.max(worst, streak); }
+    return { n, win: n ? (wins.length / n) * 100 : NaN, pf: gl ? gp / gl : gp ? Infinity : NaN, net: ((eq - startEq) / startEq) * 100, dd: dd * 100,
+      avgR: n ? trades.reduce((a, t) => a + t.r, 0) / n : NaN, bars: n ? trades.reduce((a, t) => a + t.bars, 0) / n : NaN, streak: worst };
+  }
+  function verdict(isM, oosM) {
+    if (oosM.n < 15) return ["NOT ENOUGH OUT-OF-SAMPLE TRADES", "amber", `Only ${oosM.n} trades in the held-back data. Use more history or a lower timeframe before trusting anything.`];
+    if (oosM.pf >= 1.2 && oosM.avgR > 0.1) {
+      const overfit = isNum(isM.pf) && isM.pf > oosM.pf * 1.8;
+      return [overfit ? "EDGE HOLDS, BUT WEAKER ON NEW DATA" : "EDGE HOLDS OUT-OF-SAMPLE", overfit ? "amber" : "up", overfit ? "Profitable on the held-back data, but much less than on the data you tuned on. Expect live results closer to the out-of-sample numbers." : "Profitable on data the settings weren't tuned on. Next step: paper trade it for a few weeks."];
+    }
+    if (oosM.pf >= 1) return ["WEAK: BARELY BREAKS EVEN", "amber", "Out-of-sample results are close to zero after costs. Not worth real money yet."];
+    return ["NO EDGE: DON'T TRADE THIS", "down", "Loses money on the held-back data after costs."];
+  }
+
+  function btCfg() {
+    return {
+      setup: $("btSetup").value, dir: $("btDir").value, stopMult: +$("btStop").value || 1.5, targetR: +$("btTarget").value || 2, exit: $("btExit").value,
+      maxBars: +$("btMax").value || 40, comm: +$("btComm").value || 0, slip: +$("btSlip").value || 0, risk: +$("btRisk").value || 1, oos: +$("btOos").value, capital: 10000,
+    };
+  }
+  const SETUP_NAMES = { breakout: "Breakout", pullback: "Pullback to EMA20", volspike: "Volume spike", score: "Score 70/30" };
+  const TF_NAMES = { 60: "1 hour", 240: "4 hours", D: "1 day" };
+  async function loadBtData(tf) {
+    const sym = normalize($("btSym").value || bareTicker(symbol)) || symbol;
+    $("btSym").value = bareTicker(sym);
+    msgIn("btOut", `Loading ${$("btBars").value} bars of ${bareTicker(sym)} history…`);
+    let d;
+    try { d = await getCandles(sym, tf, +$("btBars").value); } catch { d = { error: "Couldn't load price history. Check your connection." }; }
+    if (d.error) { msgIn("btOut", d.error); return null; }
+    if (d.c.length < 300) { msgIn("btOut", `Only ${d.c.length} bars of history available. The backtest needs at least 300.`); return null; }
+    $("btData").textContent = `${bareTicker(sym)} · ${d.c.length} bars from ${new Date(d.t[0]).toLocaleDateString()} to ${new Date(d.t.at(-1)).toLocaleDateString()} · ${d.src}`;
+    return { sym, d };
+  }
+  function metricsTable(rows) {
+    const t = el("table", "t"), hr = el("tr");
+    [["", 0], ["TRADES", 1], ["WIN %", 1], ["PROFIT FACTOR", 1], ["NET", 1], ["MAX DD", 1], ["AVG R", 1], ["AVG BARS", 1], ["WORST STREAK", 1]].forEach(([h, r]) => hr.append(th(h, r)));
+    t.append(hr);
+    rows.forEach(([label, m, cls]) => {
+      const tr = el("tr");
+      tr.append(td(label, cls || "amber"), td(String(m.n), "r"), td(isNum(m.win) ? m.win.toFixed(0) + "%" : "—", "r"), td(m.pf === Infinity ? "∞" : isNum(m.pf) ? m.pf.toFixed(2) : "—", "r " + (m.pf >= 1 ? "up" : "down")),
+        td(fmtPct(m.net), "r " + signCls(m.net)), td(isNum(m.dd) ? m.dd.toFixed(1) + "%" : "—", "r down"), td(isNum(m.avgR) ? m.avgR.toFixed(2) + "R" : "—", "r " + signCls(m.avgR)), td(isNum(m.bars) ? m.bars.toFixed(0) : "—", "r"), td(String(m.streak), "r"));
+      t.append(tr);
+    });
+    return t;
+  }
+  function drawBtCurve(cv, res, cap) {
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth || 600, h = cv.clientHeight || 220;
+    cv.width = w * dpr; cv.height = h * dpr;
+    const g = cv.getContext("2d"); g.scale(dpr, dpr); g.font = "11px monospace";
+    const pts = res.curve;
+    if (pts.length < 2) { g.fillStyle = "#8c8c8c"; g.fillText("No trades.", 8, h / 2); return; }
+    const t0 = res.start, t1 = res.end, lo = Math.min(cap, ...pts.map((p) => p.eq)), hi = Math.max(cap, ...pts.map((p) => p.eq)), sp = hi - lo || 1;
+    const padL = 70, padR = 10, padT = 10, padB = 18;
+    const X = (t) => padL + ((t - t0) / (t1 - t0 || 1)) * (w - padL - padR), Y = (v) => padT + (1 - (v - lo) / sp) * (h - padT - padB);
+    g.fillStyle = "rgba(251,139,30,.06)"; g.fillRect(X(res.splitT), padT, w - padR - X(res.splitT), h - padT - padB);
+    g.fillStyle = "#fb8b1e"; g.fillText("out-of-sample →", X(res.splitT) + 4, padT + 10);
+    g.strokeStyle = "#262626"; g.fillStyle = "#8c8c8c";
+    [lo, cap, hi].forEach((v) => { g.beginPath(); g.moveTo(padL, Y(v)); g.lineTo(w - padR, Y(v)); g.stroke(); g.fillText(fmtUsd(v).replace(/\.\d\d$/, ""), 2, Y(v) + 4); });
+    g.fillText(new Date(t0).toLocaleDateString(), padL, h - 4);
+    g.textAlign = "right"; g.fillText(new Date(t1).toLocaleDateString(), w - padR, h - 4); g.textAlign = "left";
+    g.strokeStyle = pts.at(-1).eq >= cap ? "#4af626" : "#ff433d"; g.lineWidth = 1.5; g.beginPath();
+    pts.forEach((p, i) => (i ? g.lineTo(X(p.t), Y(p.eq)) : g.moveTo(X(p.t), Y(p.eq))));
+    g.stroke();
+  }
+  async function runBt() {
+    const got = await loadBtData($("btTf").value);
+    if (!got) return;
+    const cfg = btCfg(), res = runBacktest(got.d, cfg);
+    const isT = res.trades.filter((t) => !t.oos), oosT = res.trades.filter((t) => t.oos);
+    const isM = btMetrics(isT, cfg.capital), oosM = btMetrics(oosT, cfg.capital), allM = btMetrics(res.trades, cfg.capital);
+    const [vt, vc, vd] = verdict(isM, oosM);
+    const ban = el("div", "rulebar" + (vc === "up" ? "" : " soft"));
+    if (vc === "up") ban.style.background = "var(--up)";
+    ban.append(el("b", "", vt + ": "), vd);
+    const cv = el("canvas");
+    cv.style.cssText = "width:100%;height:220px;display:block;margin:10px 0";
+    cv.setAttribute("aria-label", "Equity curve of the backtest, out-of-sample period shaded");
+    const head = el("div", "muted", `${SETUP_NAMES[cfg.setup]} · ${cfg.dir} · ${TF_NAMES[$("btTf").value]} · stop ${cfg.stopMult}× ATR · target ${cfg.targetR}R · exit ${cfg.exit} · costs ${cfg.comm}% + ${cfg.slip}% slippage · risk ${cfg.risk}% per trade · $10,000 start`);
+    const t = el("table", "t"), hr = el("tr");
+    [["ENTRY"], ["SIDE"], ["ENTRY PX", 1], ["EXIT PX", 1], ["R", 1], ["P&L", 1], ["BARS", 1], ["EXIT"], ["SAMPLE"]].forEach(([h, r]) => hr.append(th(h, r)));
+    t.append(hr);
+    [...res.trades].reverse().slice(0, 150).forEach((x) => {
+      const tr = el("tr");
+      tr.append(td(new Date(x.entryT).toLocaleString([], { year: "2-digit", month: "short", day: "numeric", hour: "2-digit" })), td(x.side > 0 ? "LONG" : "SHORT", x.side > 0 ? "up" : "down"), td(fmt(x.entry), "r"), td(fmt(x.exit), "r"),
+        td(x.r.toFixed(2) + "R", "r " + signCls(x.r)), td(fmtUsd(x.pnl), "r " + signCls(x.pnl)), td(String(x.bars), "r"), td(x.reason, "muted"), td(x.oos ? "OUT" : "IN", x.oos ? "amber" : "muted"));
+      t.append(tr);
+    });
+    $("btOut").replaceChildren(ban, head, metricsTable([["IN-SAMPLE (tune here)", isM], ["OUT-OF-SAMPLE (the real test)", oosM, "up"], ["ALL DATA", allM, "muted"]]), cv,
+      el("div", "amber", "TRADES (newest first)"), t,
+      el("p", "fine", "Past results don't guarantee future ones. The test can't see intrabar order, funding fees, gaps in liquidity or your own execution. Treat a passing result as permission to paper trade, not to bet big."));
+    drawBtCurve(cv, res, cfg.capital);
+    lastBt = { sym: got.sym, cfg, isM, oosM, verdict: vt, at: Date.now() };
+    saveJSON("term.lastBt", lastBt);
+  }
+  let lastBt = loadJSON("term.lastBt", null);
+  async function compareBt(kind) {
+    const cfg0 = btCfg(), rows = [];
+    if (kind === "setups") {
+      const got = await loadBtData($("btTf").value);
+      if (!got) return;
+      for (const s of Object.keys(SETUP_NAMES)) {
+        const r = runBacktest(got.d, { ...cfg0, setup: s });
+        rows.push([SETUP_NAMES[s], btMetrics(r.trades.filter((t) => !t.oos), 1e4), btMetrics(r.trades.filter((t) => t.oos), 1e4)]);
+      }
+    } else {
+      for (const tf of ["60", "240", "D"]) {
+        const got = await loadBtData(tf);
+        if (!got) return;
+        const r = runBacktest(got.d, cfg0);
+        rows.push([TF_NAMES[tf], btMetrics(r.trades.filter((t) => !t.oos), 1e4), btMetrics(r.trades.filter((t) => t.oos), 1e4)]);
+      }
+    }
+    rows.sort((a, b) => (isNum(b[2].pf) ? b[2].pf : -1) - (isNum(a[2].pf) ? a[2].pf : -1));
+    const t = el("table", "t"), hr = el("tr");
+    [[kind === "setups" ? "SETUP" : "TIMEFRAME"], ["IN-SAMPLE PF", 1], ["IN-SAMPLE NET", 1], ["OUT-OF-SAMPLE TRADES", 1], ["OUT-OF-SAMPLE PF", 1], ["OUT-OF-SAMPLE NET", 1], ["OOS AVG R", 1], ["VERDICT"]].forEach(([h, r]) => hr.append(th(h, r)));
+    t.append(hr);
+    rows.forEach(([name, a, b]) => {
+      const [vt, vc] = verdict(a, b), tr = el("tr");
+      const pf = (m) => (m.pf === Infinity ? "∞" : isNum(m.pf) ? m.pf.toFixed(2) : "—");
+      tr.append(td(name, "amber"), td(pf(a), "r"), td(fmtPct(a.net), "r " + signCls(a.net)), td(String(b.n), "r"), td(pf(b), "r " + (b.pf >= 1 ? "up" : "down")), td(fmtPct(b.net), "r " + signCls(b.net)), td(isNum(b.avgR) ? b.avgR.toFixed(2) + "R" : "—", "r " + signCls(b.avgR)), td(vt, vc));
+      t.append(tr);
+    });
+    $("btOut").replaceChildren(el("div", "muted", `${kind === "setups" ? "All setups on " + TF_NAMES[$("btTf").value] : SETUP_NAMES[cfg0.setup] + " on every timeframe"} · ${bareTicker(normalize($("btSym").value) || symbol)} · ranked by out-of-sample profit factor`), t,
+      el("p", "fine", "Keep only what holds up out-of-sample with enough trades. Comparing many options and picking the best one is itself a form of tuning, so paper trade the winner before using real money."));
+  }
+  $("btForm").addEventListener("submit", (e) => { e.preventDefault(); runBt(); });
+  $("btCmpSetups").addEventListener("click", () => compareBt("setups"));
+  $("btCmpTf").addEventListener("click", () => compareBt("tf"));
+
   // Hooks into symbol changes and views.
   function afterSymbol() {
     lastNote = null;
@@ -3101,6 +3415,7 @@
     if (v === "jrnl") { renderJournal(); refreshPrices(true); }
     if (v === "chart") { loadChart2(); renderCwQuote(); renderLists(); }
     if (v === "flow") enterFlow();
+    if (v === "bt" && !$("btSym").value) $("btSym").value = binSym(symbol) ? bareTicker(symbol) : "BTCUSDT";
     if (v === "main") renderLists();
   }
 
