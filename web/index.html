@@ -318,6 +318,19 @@
   .pstep span { color: var(--muted); }
   .cw-events { padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 
+  /* TODAY screen, risk check */
+  .todaygrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; align-items: start; }
+  .card { background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .card h3 { margin: 0 0 4px; font-size: 12px; letter-spacing: .08em; color: var(--amber); }
+  .card .tbtn { align-self: flex-start; margin-top: 4px; }
+  .card .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tline { overflow-wrap: anywhere; }
+  .tline.setup { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .tline.setup .tbtn { margin: 0 0 0 auto; padding: 1px 8px; }
+  .process.compact { grid-template-columns: minmax(0, 1fr); border: 0; }
+  .mcbox { border: 1px solid var(--line); border-left: 3px solid var(--amber); padding: 8px 10px; margin: 10px 0; display: flex; flex-direction: column; gap: 3px; }
+  #btApproved { padding: 6px 8px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+
   /* Toasts and install button */
   .toasts { position: fixed; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 20; max-width: min(360px, calc(100vw - 24px)); }
   .toast { background: #0a0a0a; border: 1px solid var(--amber); padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.6); }
@@ -356,7 +369,8 @@
 <header class="cmd">
   <span class="brand">TERMINAL</span>
   <form id="cmdForm" autocomplete="off">
-    <input id="cmdInput" placeholder="AAPL  ·  BTCUSD  ·  HEAT  ·  EQS  ·  ASK why is NVDA down?  ·  BRIEF  ·  HELP" aria-label="Command">
+    <input id="cmdInput" list="cmdList" placeholder="AAPL  ·  BTCUSD  ·  SCAN  ·  BACKTEST  ·  ASK why is NVDA down?  ·  HELP" aria-label="Command">
+    <datalist id="cmdList"></datalist>
     <button class="go" type="submit">&lt;GO&gt;</button>
   </form>
   <div class="clocks" id="clocks"></div>
@@ -370,6 +384,7 @@
 <div class="offline" id="offline" hidden>OFFLINE: prices, alerts and charts are frozen until the connection comes back.</div>
 <div class="statusbox" id="statusBox" hidden></div>
 <nav class="fkeys" aria-label="Screens">
+  <button data-cmd="TODAY" data-view="today">TODAY</button>
   <button data-cmd="MAIN" data-view="main" class="on">MAIN</button>
   <button data-cmd="CHARTS" data-view="chart">CHARTS</button>
   <button data-cmd="GRID" data-view="grid">MULTI-CHART</button>
@@ -426,6 +441,13 @@
 </div>
 
 <div class="tape" id="tape"></div>
+
+<section class="view" id="v-today">
+  <div class="full">
+    <div class="subtabs"><span class="title">TODAY</span><span id="todayDate" class="muted"></span><span style="margin-left:auto" class="muted">Updates every 15 s · keys 1–9 switch screens</span></div>
+    <div class="scroll" style="flex:1;overflow:auto;padding:10px"><div class="todaygrid" id="todayGrid"></div></div>
+  </div>
+</section>
 
 <main class="grid view active" id="v-main">
   <section class="panel" id="p-info"><h2>DES · SECURITY <small id="symLabel"></small></h2><div class="body" id="w-info"></div></section>
@@ -659,6 +681,7 @@
     <div class="subtabs">
       <span class="title">SCAN · SETUP SCANNER</span><span id="scanStatus" class="muted"></span>
       <span style="margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="scanTested"> Only tested setups</label>
         <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="scanAlerts"> Alert me on new A-grade setups</label>
         <button type="button" id="scanNow">SCAN NOW</button>
       </span>
@@ -688,11 +711,13 @@
       <label>Commission % / side<input id="btComm" type="number" step="0.01" min="0" value="0.1"></label>
       <label>Slippage %<input id="btSlip" type="number" step="0.01" min="0" value="0.05"></label>
       <label>Risk per trade %<input id="btRisk" type="number" step="0.1" min="0.1" value="1"></label>
+      <label>Trend filter<select id="btFilter"><option value="none">None</option><option value="ema200">With the 200 EMA</option><option value="daily">With the daily trend</option></select></label>
       <label>Out-of-sample %<select id="btOos"><option value="20">last 20%</option><option value="30" selected>last 30%</option><option value="40">last 40%</option></select></label>
       <button type="submit">▶ RUN BACKTEST</button>
       <button type="button" id="btCmpSetups">COMPARE SETUPS</button>
       <button type="button" id="btCmpTf">COMPARE TIMEFRAMES</button>
     </form>
+    <div id="btApproved"></div>
     <div class="scroll" style="flex:1;overflow:auto;padding:8px" id="btOut">
       <div class="msgline">Pick a crypto symbol and a setup, then press RUN. The test enters on the bar after each signal, checks the stop before the target when both are hit in the same bar, and charges commission and slippage on every fill. The last part of the history is held back as out-of-sample: tune the settings while looking only at the in-sample results, then trust the setup only if the out-of-sample results hold up too.</div>
     </div>
@@ -841,6 +866,8 @@
       <tr><td>MAX</td><td>Chart fills the screen (Esc to exit)</td></tr>
       <tr><td>ADD TSLA · DEL TSLA</td><td>Add to / remove from My list (monitor and ticker strip)</td></tr>
       <tr><td>GRID · GRID 2 · GRID 4 NVDA SPY QQQ SMH</td><td>Multi-chart: one symbol on several timeframes, or several symbols</td></tr>
+      <tr><td>TODAY</td><td>Home screen: mood, risk today, open trades, best setups, movers, alerts, earnings, your process</td></tr>
+      <tr><td>Keys 1–9, 0</td><td>Switch screens in menu order (when not typing); / jumps to the orange bar</td></tr>
       <tr><td>SCAN</td><td>Setup scanner over My list: entry, ATR stop, 2R target, grade; optional alerts on new A-grade setups</td></tr>
       <tr><td>BT · BACKTEST</td><td>Test a setup on years of history with costs, in-sample vs out-of-sample</td></tr>
       <tr><td>FLOW</td><td>Order flow: buy vs sell pressure, large trades, order book walls, 13F holders and market makers</td></tr>
@@ -1121,6 +1148,7 @@
     if (["FLOW", "MM", "ORDERFLOW", "ORDER FLOW", "BOOK"].includes(c)) return showView("flow");
     if (["BT", "BACKTEST", "TEST"].includes(c)) return showView("bt");
     if (["SCAN", "SCANNER", "SETUPS"].includes(c)) return showView("scan");
+    if (["TODAY", "HOME"].includes(c)) return showView("today");
     if (["PORT", "PF", "PORTFOLIO"].includes(c)) return showView("port");
     if (["JRNL", "JOURNAL", "LOG", "TRADES"].includes(c)) return showView("jrnl");
     if ((m = c.match(/^LOG (LONG|SHORT|BUY|SELL) (\S+) ([\d.]+) ?(?:@|AT) ?([\d.]+)(?: STOP ([\d.]+))?(?: (?:TARGET|TP) ([\d.]+))?$/))) {
@@ -1205,6 +1233,7 @@
 
   function showView(v) {
     view = v;
+    store.set("term.view", v);
     document.querySelectorAll(".view").forEach((el) => el.classList.toggle("active", el.id === "v-" + v));
     document.querySelectorAll(".fkeys button[data-view]").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
     if (v === "heat") loadHeat();
@@ -1582,6 +1611,7 @@
     loadStatic();
     refreshPrices(true);
     renderLists();
+    fillCmdList();
     toast("Added to My list", added.join(", "));
   }
   function delWatch(raw) {
@@ -3374,7 +3404,10 @@
         }
       }
       if (!pos && i < n - 1 && isNum(k.atr[i])) {
-        const sig = signalAt(d, i, cfg.setup);
+        let sig = signalAt(d, i, cfg.setup);
+        if (sig && cfg.filter === "ema200" && !(sig > 0 ? d.c[i] > k.e200[i] : d.c[i] < k.e200[i])) sig = 0;
+        if (sig && cfg.filter === "daily" && cfg.dailyTrend && cfg.dailyTrend(d.t[i]) !== sig) sig = 0;
+        if (sig && cfg.filter === "daily" && !cfg.dailyTrend && trendAt(d, i) !== sig) sig = 0;
         if (sig && (cfg.dir === "both" || (cfg.dir === "long" ? sig > 0 : sig < 0))) {
           const raw = d.o[i + 1], entry = raw * (1 + slip * sig), dist = cfg.stopMult * k.atr[i];
           const stop = raw - sig * dist, riskUsd = (eq * cfg.risk) / 100;
@@ -3407,7 +3440,7 @@
 
   function btCfg() {
     return {
-      setup: $("btSetup").value, dir: $("btDir").value, stopMult: +$("btStop").value || 1.5, targetR: +$("btTarget").value || 2, exit: $("btExit").value,
+      setup: $("btSetup").value, dir: $("btDir").value, filter: $("btFilter").value, stopMult: +$("btStop").value || 1.5, targetR: +$("btTarget").value || 2, exit: $("btExit").value,
       maxBars: +$("btMax").value || 40, comm: +$("btComm").value || 0, slip: +$("btSlip").value || 0, risk: +$("btRisk").value || 1, oos: +$("btOos").value, capital: 10000,
     };
   }
@@ -3458,7 +3491,9 @@
   async function runBt() {
     const got = await loadBtData($("btTf").value);
     if (!got) return;
-    const cfg = btCfg(), res = runBacktest(got.d, cfg);
+    const cfg = btCfg();
+    if (cfg.filter === "daily") cfg.dailyTrend = await dailyTrendFn(got.sym, $("btTf").value, +$("btBars").value);
+    const res = runBacktest(got.d, cfg);
     const isT = res.trades.filter((t) => !t.oos), oosT = res.trades.filter((t) => t.oos);
     const isM = btMetrics(isT, cfg.capital), oosM = btMetrics(oosT, cfg.capital), allM = btMetrics(res.trades, cfg.capital);
     const [vt, vc, vd] = verdict(isM, oosM);
@@ -3478,7 +3513,16 @@
         td(x.r.toFixed(2) + "R", "r " + signCls(x.r)), td(fmtUsd(x.pnl), "r " + signCls(x.pnl)), td(String(x.bars), "r"), td(x.reason, "muted"), td(x.oos ? "OUT" : "IN", x.oos ? "amber" : "muted"));
       t.append(tr);
     });
-    $("btOut").replaceChildren(ban, head, metricsTable([["IN-SAMPLE (tune here)", isM], ["OUT-OF-SAMPLE (the real test)", oosM, "up"], ["ALL DATA", allM, "muted"]]), cv,
+    const tf = $("btTf").value, extra = [];
+    if (/EDGE HOLDS/.test(vt)) {
+      const ap = el("button", "tbtn on", isTested(got.sym, tf, cfg.setup, cfg.dir === "short" ? -1 : 1) ? "✓ APPROVED · UPDATE" : "✓ APPROVE THIS SETUP");
+      ap.type = "button";
+      ap.title = "Mark this setup as proven. The scanner and checklist will show it as TESTED.";
+      ap.style.margin = "8px 0";
+      ap.addEventListener("click", () => { approveSetup(got.sym, tf, cfg, oosM); ap.textContent = "✓ APPROVED"; });
+      extra.push(ap);
+    }
+    $("btOut").replaceChildren(ban, ...extra, head, metricsTable([["IN-SAMPLE (tune here)", isM], ["OUT-OF-SAMPLE (the real test)", oosM, "up"], ["ALL DATA", allM, "muted"]]), mcBox(monteCarlo(res.trades, cfg.risk), cfg.risk), cv,
       el("div", "amber", "TRADES (newest first)"), t,
       el("p", "fine", "Past results don't guarantee future ones. The test can't see intrabar order, funding fees, gaps in liquidity or your own execution. Treat a passing result as permission to paper trade, not to bet big."));
     drawBtCurve(cv, res, cfg.capital);
@@ -3491,6 +3535,7 @@
     if (kind === "setups") {
       const got = await loadBtData($("btTf").value);
       if (!got) return;
+      if (cfg0.filter === "daily") cfg0.dailyTrend = await dailyTrendFn(got.sym, $("btTf").value, +$("btBars").value);
       for (const s of Object.keys(SETUP_NAMES)) {
         const r = runBacktest(got.d, { ...cfg0, setup: s });
         rows.push([SETUP_NAMES[s], btMetrics(r.trades.filter((t) => !t.oos), 1e4), btMetrics(r.trades.filter((t) => t.oos), 1e4)]);
@@ -3499,7 +3544,7 @@
       for (const tf of ["60", "240", "D"]) {
         const got = await loadBtData(tf);
         if (!got) return;
-        const r = runBacktest(got.d, cfg0);
+        const r = runBacktest(got.d, { ...cfg0, dailyTrend: cfg0.filter === "daily" ? await dailyTrendFn(got.sym, tf, +$("btBars").value) : null });
         rows.push([TF_NAMES[tf], btMetrics(r.trades.filter((t) => !t.oos), 1e4), btMetrics(r.trades.filter((t) => t.oos), 1e4)]);
       }
     }
@@ -3546,6 +3591,7 @@
     } else mood.stocks = { state: "unknown", detail: "Add a free Finnhub key in ⚙ Settings for the stock-market mood." };
     mood.at = Date.now();
     renderMood();
+    if (view === "today") renderToday();
   }
   const MOOD_TXT = { on: ["RISK-ON", "up"], mixed: ["MIXED", "amber"], off: ["RISK-OFF", "down"], unknown: ["?", "muted"] };
   function renderMood() {
@@ -3615,6 +3661,8 @@
     // 6. Data quality
     const f = freshness(t.sym);
     add("data", "Price data is live", !f ? "unknown" : f.cls === "up" ? "pass" : f.cls === "amber" || f.cls === "muted" ? "warn" : "fail", f ? `${f.txt}: ${f.tip}` : "No live price for this symbol.");
+    // 8. Setup proven in the backtester (only when the setup is known, e.g. from the scanner)
+    if (t.tested !== undefined) add("tested", "Setup proven in BACKTEST", t.tested ? "pass" : "warn", t.tested ? "This setup passed out-of-sample and you approved it." : "Not backtested and approved for this symbol and timeframe yet.");
     // 7. Market mood
     const md = moodFor(t.sym), aligned = want > 0 ? md.state === "on" : md.state === "off", against = want > 0 ? md.state === "off" : md.state === "on";
     add("mood", "Overall market supports it", md.state === "unknown" ? "unknown" : aligned ? "pass" : against ? "fail" : "warn", md.detail);
@@ -3689,11 +3737,11 @@
     const found = [];
     for (const [setup, d, i, tf] of [["breakout", dD, iD, "1D"], ["pullback", dD, iD, "1D"], ["volspike", dD, iD, "1D"], ["score", dD, iD, "1D"], ["breakout", d4, i4, "4H"], ["pullback", d4, i4, "4H"], ["volspike", d4, i4, "4H"]]) {
       const sg = signalAt(d, i, setup);
-      if (sg) found.push({ setup: `${SETUP_NAMES[setup]} (${tf})`, side: sg });
+      if (sg) found.push({ setup: `${SETUP_NAMES[setup]} (${tf})`, side: sg, tested: isTested(sym, tf === "1D" ? "D" : "240", setup, sg) });
     }
     const nearEma = Math.abs(price - kD.e20[iD]) <= atr;
     if (!found.length && tD && tD === t4 && nearEma) found.push({ setup: "Pullback zone (watch)", side: tD, watch: true });
-    const pick = found.find((f) => f.side === tD) || found[0];
+    const pick = found.find((f) => f.tested && f.side === tD) || found.find((f) => f.tested) || found.find((f) => f.side === tD) || found[0];
     const base = { sym, price, atr, tD, t4, score: kD.score[iD], vol: dD.v[iD] / kD.volAvg[iD], rsi: kD.rsi[iD], hi20: kD.hh20[iD + 1], lo20: kD.ll20[iD + 1] };
     if (!pick) return { ...base, setup: null };
     const side = pick.side, stop = price - side * 1.5 * atr, target = price + side * 3 * atr;
@@ -3701,8 +3749,8 @@
     const acct = accountSize(), riskPct = +rules.risk > 0 ? +rules.risk : 1;
     let qty = acct > 0 ? (acct * riskPct) / 100 / Math.abs(price - stop) : 1;
     qty = assetClass(sym) === "crypto" ? Math.floor(qty * 1e4) / 1e4 : Math.max(1, Math.floor(qty));
-    const res = await evaluateTrade({ sym, side: side > 0 ? "long" : "short", qty, entry: price, stop, target });
-    return { ...base, setup: pick.setup, watch: !!pick.watch, others: found.length - 1, side, entry: price, stop, target, qty, grade: res.grade, checks: res.checks };
+    const res = await evaluateTrade({ sym, side: side > 0 ? "long" : "short", qty, entry: price, stop, target, tested: !!pick.tested });
+    return { ...base, setup: pick.setup, tested: !!pick.tested, watch: !!pick.watch, others: found.length - 1, side, entry: price, stop, target, qty, grade: res.grade, checks: res.checks };
   }
   async function runScan(silent) {
     if (scanBusy) return;
@@ -3712,7 +3760,7 @@
     for (const sym of myList.slice(0, 20)) {
       try { rows.push(await scanSymbol(sym)); } catch { rows.push({ sym, error: "Scan failed." }); }
     }
-    const rank = (r) => (r.error ? 9 : !r.setup ? 8 : { A: 0, B: 2, C: 4 }[r.grade] + (r.watch ? 1 : 0));
+    const rank = (r) => (r.error ? 9 : !r.setup ? 8 : { A: 0, B: 2, C: 4 }[r.grade] + (r.watch ? 1 : 0) - (r.tested ? 0.5 : 0));
     rows.sort((a, b) => rank(a) - rank(b) || (b.score || 0) - (a.score || 0));
     scanRows = rows; scanAt = Date.now(); scanBusy = false;
     if (view === "scan") renderScan();
@@ -3756,7 +3804,10 @@
       lg.addEventListener("click", () => prefillTrade(r));
       ch.addEventListener("click", () => { run(r.sym); showView("chart"); });
       act.append(ch, " ", lg);
-      tr.append(sy, g, td(r.setup + (r.others > 0 ? ` +${r.others}` : ""), r.watch ? "muted" : ""), td(r.side > 0 ? "LONG" : "SHORT", r.side > 0 ? "up" : "down"),
+      const su = td(r.setup + (r.others > 0 ? ` +${r.others}` : "") + " ", r.watch ? "muted" : "");
+      su.append(r.tested ? el("span", "chip buy", "TESTED") : el("span", "chip other", "UNTESTED"));
+      if ($("scanTested").checked && !r.tested) continue;
+      tr.append(sy, g, su, td(r.side > 0 ? "LONG" : "SHORT", r.side > 0 ? "up" : "down"),
         td(fmt(r.price), "r"), td(fmt(r.stop), "r down"), td(fmt(r.target), "r up"), td(String(r.qty), "r"), td(isNum(r.score) ? r.score.toFixed(0) : "—", "r"), tc,
         td(isNum(r.vol) ? r.vol.toFixed(1) + "×" : "—", "r " + (r.vol >= 1.5 ? "amber" : "")), w, act);
       t.append(tr);
@@ -3880,7 +3931,7 @@
   }
 
   // The five-step process: backtest → paper → small real → weekly review → size up.
-  function renderProcess() {
+  function renderProcess(target) {
     const paper = journal.filter((t) => t.paper && isNum(t.exit)), real = journal.filter((t) => !t.paper && isNum(t.exit));
     const ps = stats(paper), rs = stats(real), rev = store.get("term.lastReview");
     const days = rev ? (Date.now() - +rev) / 864e5 : Infinity;
@@ -3891,7 +3942,7 @@
       [days <= 7 ? "ok" : "warn", "4 · WEEKLY REVIEW", rev ? `Last review ${new Date(+rev).toLocaleDateString()}${days > 7 ? ": overdue." : "."}` : "Not done yet. Read the insights below once a week."],
       [rs.n >= 30 && rs.pf >= 1.2 && rs.maxDD > -(accountSize() * 0.1) ? "ok" : "todo", "5 · SIZE UP", rs.n >= 30 && rs.pf >= 1.2 ? "Results hold up. Increase size gradually, one step at a time." : `Keep size small until 30+ real trades show PF ≥ 1.2 (now ${rs.n} trades).`],
     ];
-    const box = $("jrProcess");
+    const box = target || $("jrProcess");
     box.replaceChildren(...steps.map(([st, name, txt]) => {
       const d = el("div", "pstep " + st);
       d.append(el("b", "", (st === "ok" ? "✓ " : st === "warn" ? "! " : st === "doing" ? "… " : "○ ") + name), el("span", "", txt));
@@ -3925,6 +3976,193 @@
     box.replaceChildren(...lines.map(([c, t]) => el("div", c, t)));
   }
 
+  // ───────────────────────── Backtest: Monte Carlo risk check and approved setups ─────────────────────────
+  // Re-orders and re-samples the trade results 2,000 times to show how bad a
+  // normal losing streak can get, and how often the next N trades lose money.
+  function monteCarlo(trades, riskPct, runs = 2000) {
+    const rs = trades.map((t) => t.r).filter(isNum);
+    if (rs.length < 10) return null;
+    const n = Math.max(50, rs.length), dds = [], finals = [];
+    for (let k = 0; k < runs; k++) {
+      let eq = 1, peak = 1, dd = 0;
+      for (let i = 0; i < n; i++) {
+        eq *= 1 + (rs[(Math.random() * rs.length) | 0] * riskPct) / 100;
+        if (eq > peak) peak = eq;
+        dd = Math.min(dd, eq / peak - 1);
+      }
+      dds.push(dd); finals.push(eq - 1);
+    }
+    dds.sort((a, b) => a - b); finals.sort((a, b) => a - b);
+    const pct = (a, p) => a[Math.min(a.length - 1, Math.floor(a.length * p))];
+    return { n, ddMedian: pct(dds, 0.5) * 100, dd95: pct(dds, 0.05) * 100, lossChance: (finals.filter((x) => x < 0).length / runs) * 100, retMedian: pct(finals, 0.5) * 100, ret5: pct(finals, 0.05) * 100 };
+  }
+  function mcBox(mc, riskPct) {
+    const box = el("div", "mcbox");
+    if (!mc) { box.append(el("span", "muted", "Monte Carlo risk check needs at least 10 trades.")); return box; }
+    box.append(el("b", "amber", `RISK CHECK · 2,000 simulated runs of ${mc.n} trades at ${riskPct}% risk`),
+      el("div", "", `Typical worst drawdown: ${mc.ddMedian.toFixed(1)}% · bad-luck case (1 in 20): ${mc.dd95.toFixed(1)}%`),
+      el("div", mc.lossChance > 30 ? "down" : mc.lossChance > 10 ? "amber" : "up", `Chance the next ${mc.n} trades lose money overall: ${mc.lossChance.toFixed(0)}%`),
+      el("div", "", `Median result: ${fmtPct(mc.retMedian)} · bad-luck case: ${fmtPct(mc.ret5)}`),
+      el("div", "fine", `If a ${Math.abs(mc.dd95).toFixed(0)}% drawdown would make you quit, lower the risk per trade.`));
+    return box;
+  }
+
+  let approved = loadJSON("term.approved", []);
+  const approvedKey = (sym, tf, setup) => `${bareTicker(sym)}|${tf}|${setup}`;
+  function isTested(sym, tf, setup, side) {
+    return approved.some((a) => a.key === approvedKey(sym, tf, setup) && (a.dir === "both" || (a.dir === "long" ? side > 0 : side < 0)));
+  }
+  function approveSetup(sym, tf, cfg, oosM) {
+    const key = approvedKey(sym, tf, cfg.setup);
+    approved = approved.filter((a) => a.key !== key);
+    approved.push({ key, sym, tf, setup: cfg.setup, dir: cfg.dir, filter: cfg.filter, stopMult: cfg.stopMult, targetR: cfg.targetR, exit: cfg.exit, oosPf: isFinite(oosM.pf) ? oosM.pf : 1e9, oosN: oosM.n, at: Date.now() });
+    saveJSON("term.approved", approved);
+    renderApproved();
+    toast("Setup approved", `${SETUP_NAMES[cfg.setup]} on ${bareTicker(sym)} (${TF_NAMES[tf]}). The scanner now marks it TESTED.`);
+  }
+  function renderApproved() {
+    const box = $("btApproved");
+    if (!approved.length) { box.replaceChildren(el("span", "muted", "No approved setups yet. Run a backtest; when the edge holds out-of-sample, press APPROVE.")); return; }
+    box.replaceChildren(el("b", "amber", "APPROVED SETUPS: "), ...approved.map((a) => {
+      const c = el("span", "chip buy", `${bareTicker(a.sym)} · ${SETUP_NAMES[a.setup]} · ${TF_NAMES[a.tf]} · ${a.dir} · PF ${isNum(a.oosPf) ? (a.oosPf >= 1e6 ? "∞" : a.oosPf.toFixed(2)) : "—"}`);
+      const x = el("button", "x", "✕");
+      x.type = "button"; x.title = "Remove approval";
+      x.addEventListener("click", () => { approved = approved.filter((y) => y.key !== a.key); saveJSON("term.approved", approved); renderApproved(); });
+      const w = el("span"); w.style.marginRight = "8px"; w.append(c, x);
+      return w;
+    }));
+  }
+  // Daily trend lookup for lower-timeframe backtests (uses the last closed daily bar).
+  async function dailyTrendFn(sym, tf, bars) {
+    if (tf === "D") return null;
+    const need = Math.ceil((bars * (TF_MS[tf] || 864e5)) / 864e5) + 260;
+    const dD = await getCandles(sym, "D", Math.min(5000, need));
+    if (dD.error) return null;
+    return (t) => {
+      let lo = 0, hi = dD.t.length - 1, j = -1;
+      while (lo <= hi) { const m = (lo + hi) >> 1; if (dD.t[m] + 864e5 <= t) { j = m; lo = m + 1; } else hi = m - 1; }
+      return j >= 50 ? trendAt(dD, j) : 0;
+    };
+  }
+  renderApproved();
+  // ───────────────────────── TODAY: everything that matters at a glance ─────────────────────────
+  function card(title, ...kids) {
+    const c = el("section", "card");
+    c.append(el("h3", "", title), ...kids);
+    return c;
+  }
+  function line(cls, text) { return el("div", "tline " + (cls || ""), text); }
+  function actBtn(label, fn) { const b = el("button", "tbtn", label); b.type = "button"; b.addEventListener("click", fn); return b; }
+  let todayEarn = { at: 0, rows: [] };
+  async function loadTodayEarnings() {
+    if (!finnhubKey() || Date.now() - todayEarn.at < 30 * 60_000) return;
+    todayEarn.at = Date.now();
+    const r = await fh(`calendar/earnings?from=${todayPlus(0)}&to=${todayPlus(7)}`);
+    const mine = new Set([...myList, ...portfolio.map((p) => p.sym), ...journal.filter((t) => !isNum(t.exit)).map((t) => t.sym)].filter((s) => assetClass(s) === "stock").map(bareTicker));
+    todayEarn.rows = ((r && r.earningsCalendar) || []).filter((e) => mine.has(e.symbol)).sort((a, b) => a.date.localeCompare(b.date));
+    if (view === "today") renderToday();
+  }
+  function renderToday() {
+    $("todayDate").textContent = new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    const cards = [];
+
+    // 1. Market mood
+    const [st, sc] = MOOD_TXT[mood.stocks.state], [ct, cc] = MOOD_TXT[mood.crypto.state];
+    cards.push(card("MARKET MOOD",
+      line(sc, `Stocks: ${st}`), line("muted", mood.stocks.detail),
+      line(cc, `Crypto: ${ct}`), line("muted", mood.crypto.detail),
+      line("fine", "Longs work best when the mood is risk-on, shorts when it's risk-off.")));
+
+    // 2. Risk rules today
+    const today = ymd(new Date());
+    const closedToday = journal.filter((t) => isNum(t.exit) && dayKey(t.closed) === today && !t.paper);
+    const realized = closedToday.reduce((a, t) => a + tradePnl(t, t.exit), 0);
+    const openReal = journal.filter((t) => !isNum(t.exit) && !t.paper);
+    const openPnl = openReal.reduce((a, t) => { const p = px.get(t.sym)?.price; return a + (isNum(p) ? tradePnl(t, p) : 0); }, 0);
+    const opened = journal.filter((t) => dayKey(t.opened) === today && !t.paper).length;
+    const openRisk = openReal.reduce((a, t) => { const s0 = t.stop0 ?? t.stop; return a + (isNum(s0) ? Math.abs(t.entry - s0) * t.qty : 0); }, 0);
+    const lim = +rules.daily || 0, used = lim ? (-(realized + Math.min(0, openPnl)) / lim) * 100 : NaN;
+    cards.push(card("RISK TODAY (REAL MONEY)",
+      line(signCls(realized), `Realised P&L: ${fmtUsd(realized)} · open P&L: ${fmtUsd(openPnl)}`),
+      line(lim ? (used >= 100 ? "down" : used >= 75 ? "amber" : "up") : "muted", lim ? `Daily loss limit: ${Math.max(0, used).toFixed(0)}% used of ${fmtUsd(lim)}${used >= 100 ? ". STOP TRADING TODAY." : ""}` : "No daily loss limit set. Set one in JOURNAL → RISK RULES."),
+      line(+rules.trades && opened >= +rules.trades ? "down" : "", `Trades today: ${opened}${+rules.trades ? ` of ${rules.trades}` : ""}`),
+      line(accountSize() && openRisk / accountSize() > 0.05 ? "amber" : "muted", `Money at risk in open trades: ${fmtUsd(openRisk)}${accountSize() ? ` (${((openRisk / accountSize()) * 100).toFixed(1)}% of account)` : ""}`)));
+
+    // 3. Open trades
+    const open = journal.filter((t) => !isNum(t.exit));
+    const otRows = open.slice(0, 8).map((t) => {
+      const p = px.get(t.sym)?.price, s0 = t.stop0 ?? t.stop, r = isNum(p) ? tradeR(t, p) : NaN;
+      const toStop = isNum(p) && isNum(t.stop) && isNum(s0) ? (Math.abs(p - t.stop) / Math.abs(t.entry - s0)) : NaN;
+      const near = isNum(toStop) && toStop < 0.3;
+      return line(near ? "down" : signCls(r), `${t.paper ? "[PAPER] " : ""}${t.side.toUpperCase()} ${bareTicker(t.sym)} · ${isNum(p) ? fmtUsd(tradePnl(t, p)) : "no price"} · ${isNum(r) ? (r >= 0 ? "+" : "") + r.toFixed(2) + "R" : "—"}${near ? " · NEAR STOP" : ""}`);
+    });
+    cards.push(card(`OPEN TRADES (${open.length})`, ...(otRows.length ? otRows : [line("muted", "No open trades.")]), actBtn("OPEN JOURNAL", () => showView("jrnl"))));
+
+    // 4. Best setups now
+    const setups = scanRows.filter((r) => r.setup && !r.error && r.grade !== "C").slice(0, 5);
+    const stale = Date.now() - scanAt > 5 * 60_000;
+    if (stale && myList.length) runScan(true).then(() => { if (view === "today") renderToday(); });
+    const suRows = setups.map((r) => {
+      const d = el("div", "tline setup");
+      d.append(el("span", "grade g" + r.grade, r.grade), " ", el("b", r.side > 0 ? "up" : "down", `${r.side > 0 ? "LONG" : "SHORT"} ${bareTicker(r.sym)}`), " ", el("span", "muted", r.setup));
+      if (r.tested) d.append(" ", el("span", "chip buy", "TESTED"));
+      d.append(" ", actBtn("LOG", () => prefillTrade(r)));
+      return d;
+    });
+    cards.push(card("BEST SETUPS NOW", ...(suRows.length ? suRows : [line("muted", scanAt ? "No A or B setups in My list right now. Waiting is a position too." : "Scanning My list…")]),
+      line("fine", scanAt ? `Scanned ${new Date(scanAt).toLocaleTimeString()}. Only trade setups that passed BACKTEST.` : ""), actBtn("OPEN SCANNER", () => showView("scan"))));
+
+    // 5. My list movers
+    const moves = myList.map((s) => { const o = px.get(s) || {}; return { s, pct: isNum(o.price) && isNum(o.prev) ? (o.price / o.prev - 1) * 100 : NaN }; }).filter((x) => isNum(x.pct)).sort((a, b) => b.pct - a.pct);
+    const mvRow = (x) => { const d = line(signCls(x.pct), `${bareTicker(x.s)} ${fmtPct(x.pct)}`); d.style.cursor = "pointer"; d.title = "Chart " + x.s; d.addEventListener("click", () => { run(x.s); showView("chart"); }); return d; };
+    cards.push(card("MY LIST MOVERS", ...(moves.length ? [...moves.slice(0, 3).map(mvRow), ...(moves.length > 3 ? moves.slice(-Math.min(3, moves.length - 3)).map(mvRow) : [])] : [line("muted", "No prices yet. Crypto prices load without a key; stocks need Finnhub (⚙ Settings).")])));
+
+    // 6. Alerts
+    const active = alerts.filter((a) => !a.fired).map((a) => { const p = px.get(a.sym)?.price; return { a, dist: isNum(p) ? Math.abs((a.level - p) / p) * 100 : NaN }; }).sort((x, y) => (isNum(x.dist) ? x.dist : 1e9) - (isNum(y.dist) ? y.dist : 1e9));
+    const fired = alerts.filter((a) => a.fired && Date.now() - a.firedAt < 864e5);
+    cards.push(card(`ALERTS (${active.length} active)`,
+      ...active.slice(0, 4).map(({ a, dist }) => line(isNum(dist) && dist < 1 ? "amber" : "", `${bareTicker(a.sym)} ${a.op === ">" ? "above" : "below"} ${fmt(a.level)} · ${isNum(dist) ? dist.toFixed(2) + "% away" : "no price"}`)),
+      ...fired.slice(0, 3).map((a) => line("up", `Fired: ${bareTicker(a.sym)} ${a.op === ">" ? "above" : "below"} ${fmt(a.level)} at ${new Date(a.firedAt).toLocaleTimeString()}`)),
+      ...(active.length || fired.length ? [] : [line("muted", "No alerts. Type ALERT BTCUSD > 70000, or set 24/7 alerts in TradingView.")]),
+      actBtn("OPEN ALERTS", () => showView("tools"))));
+
+    // 7. Earnings this week
+    loadTodayEarnings();
+    cards.push(card("EARNINGS THIS WEEK (YOUR STOCKS)",
+      ...(!finnhubKey() ? [line("muted", "Add a free Finnhub key in ⚙ Settings.")] : todayEarn.rows.length ? todayEarn.rows.slice(0, 6).map((e) => line(e.date <= todayPlus(1) ? "down" : "amber", `${e.symbol} · ${e.date}${e.hour === "bmo" ? " before the open" : e.hour === "amc" ? " after the close" : ""}`)) : [line("up", todayEarn.at ? "None of your stocks report in the next 7 days." : "Loading…")]),
+      line("fine", "Avoid holding through earnings unless that is the plan.")));
+
+    // 8. Your process + quick actions
+    const proc = el("div", "process compact");
+    renderProcess(proc);
+    cards.push(card("YOUR PROCESS", proc));
+    cards.push(card("QUICK ACTIONS",
+      (() => { const d = el("div", "acts"); d.append(actBtn("SCAN MY LIST", () => showView("scan")), actBtn("BACKTEST", () => showView("bt")), actBtn("AI MORNING BRIEF", () => run("BRIEF")), actBtn("NEW TRADE", () => showView("jrnl")), actBtn("CHARTS", () => showView("chart"))); return d; })()));
+    $("todayGrid").replaceChildren(...cards);
+  }
+  setInterval(() => { if (view === "today") renderToday(); }, 15_000);
+  $("scanTested").checked = store.get("term.scanTested") === "1";
+  $("scanTested").addEventListener("change", () => { store.set("term.scanTested", $("scanTested").checked ? "1" : null); renderScan(); });
+
+  // Command-line suggestions: commands plus your symbols.
+  const CMDS = [["TODAY", "home screen"], ["MAIN", "main screen"], ["CHARTS", "big chart + list"], ["GRID 4", "multi-chart"], ["SCAN", "setup scanner"], ["BACKTEST", "test a setup"], ["JRNL", "trade journal"],
+    ["FLOW", "order flow"], ["RES", "research"], ["PORT", "portfolio"], ["ALRT", "alerts & calculator"], ["HEAT", "heatmap"], ["EQS", "screener"], ["AI", "AI analyst"], ["BRIEF", "AI morning brief"],
+    ["ASK ", "ask the AI"], ["ADD ", "add to My list"], ["DEL ", "remove from My list"], ["ALERT BTCUSD > ", "price alert"], ["LOG LONG ", "log a trade"], ["PAPER LONG ", "paper trade"], ["CLOSE ", "close a trade"], ["HALF ", "close half"],
+    ["BUY ", "portfolio buy"], ["SELL ", "portfolio sell"], ["MAX", "full-screen chart"], ["SETTINGS", "keys & backup"], ["HELP", "all commands"]];
+  function fillCmdList() {
+    const opts = [...CMDS.map(([v, l]) => [v, l]), ...myList.map((s) => [bareTicker(s), "load " + s])];
+    $("cmdList").replaceChildren(...opts.map(([v, l]) => { const o = el("option"); o.value = v; o.label = l; return o; }));
+  }
+  fillCmdList();
+  // Number keys switch screens in menu order when you're not typing.
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName) || !$("settings").hidden) return;
+    const idx = "1234567890".indexOf(e.key);
+    if (idx < 0) return;
+    const btns = [...document.querySelectorAll(".fkeys button[data-view]")];
+    if (btns[idx]) { e.preventDefault(); showView(btns[idx].dataset.view); }
+  });
+
   // Hooks into symbol changes and views.
   function afterSymbol() {
     lastNote = null;
@@ -3949,6 +4187,7 @@
     if (v === "jrnl") { renderJournal(); refreshPrices(true); }
     if (v === "chart") { loadChart2(); renderCwQuote(); renderLists(); renderEvents(); }
     if (v === "flow") enterFlow();
+    if (v === "today") renderToday();
     if (v === "scan") { renderScan(); if (Date.now() - scanAt > 50_000) runScan(false); }
     if (v === "bt" && !$("btSym").value) $("btSym").value = binSym(symbol) ? bareTicker(symbol) : "BTCUSDT";
     if (v === "main") renderLists();
@@ -3957,6 +4196,7 @@
   syncKeyUI();
   loadStatic();
   loadSymbol();
+  showView(store.get("term.view") || "today");
 })();
 </script>
 <div class="toasts" id="toasts" aria-live="polite"></div>
