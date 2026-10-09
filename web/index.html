@@ -307,6 +307,17 @@
   #jrCheck { padding: 8px; border-bottom: 1px solid var(--line); }
   .mood { background: #000; border: 0; padding: 5px 8px; font: inherit; font-weight: 700; font-size: 11px; color: var(--text); }
 
+  /* Process tracker, events */
+  .process { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); align-items: stretch; }
+  .process > button { margin: 6px; justify-self: start; align-self: center; }
+  .pstep { background: var(--panel); padding: 6px 10px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; border-top: 2px solid #333; }
+  .pstep b { font-size: 11px; letter-spacing: .06em; }
+  .pstep.ok { border-top-color: var(--up); } .pstep.ok b { color: var(--up); }
+  .pstep.warn { border-top-color: var(--down); } .pstep.warn b { color: var(--down); }
+  .pstep.doing { border-top-color: var(--amber); } .pstep.doing b { color: var(--amber); }
+  .pstep span { color: var(--muted); }
+  .cw-events { padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+
   /* Toasts and install button */
   .toasts { position: fixed; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 20; max-width: min(360px, calc(100vw - 24px)); }
   .toast { background: #0a0a0a; border: 1px solid var(--amber); padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.6); }
@@ -475,6 +486,7 @@
     </div>
     <aside class="cw-side">
       <div class="cw-quote" id="cwQuote"></div>
+      <div class="cw-events" id="cwEvents"></div>
       <h2><span>MY LIST</span><small class="muted">click to chart</small></h2>
       <div class="cw-list" id="cwList"></div>
     </aside>
@@ -695,6 +707,10 @@
       <button data-per="week">THIS WEEK</button>
       <button data-per="month">THIS MONTH</button>
       <button data-per="all" class="on">ALL</button>
+      <span style="width:1px;align-self:stretch;background:var(--line)"></span>
+      <button data-mode="all">REAL + PAPER</button>
+      <button data-mode="real">REAL</button>
+      <button data-mode="paper">PAPER</button>
       <span style="margin-left:auto;display:flex;gap:4px;flex-wrap:wrap">
         <button type="button" id="jrAi">AI REVIEW</button>
         <button type="button" id="jrCsv">EXPORT CSV</button>
@@ -704,6 +720,7 @@
       </span>
     </div>
     <div class="rulebar" id="ruleBar" hidden></div>
+    <div class="process" id="jrProcess"></div>
     <div class="tiles" id="jrTiles"></div>
     <div class="cols" style="grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);">
       <section class="panel">
@@ -717,6 +734,8 @@
           <label>Target<input id="jrTarget" type="number" step="any" min="0"></label>
           <label>Setup<input id="jrSetup" placeholder="breakout" list="jrSetups"></label>
           <label style="flex:1 1 200px">Why I'm taking it<input id="jrNotes" style="width:100%" placeholder="Broke prior-day high on 2× volume"></label>
+          <label>Exit plan<select id="jrPlan"><option value="target">Fixed target</option><option value="trail">Trailing stop (1.5× ATR)</option><option value="partial">Half at 1R, rest at target</option></select></label>
+          <label style="flex-direction:row;align-items:center;gap:6px;color:var(--text)"><input type="checkbox" id="jrPaper" style="width:auto"> Paper trade (fills at the live price)</label>
           <button type="button" id="jrAtr" title="Stop 1.5× daily ATR from entry, target 2R">ATR STOP</button>
           <button type="submit" id="jrLogBtn">LOG TRADE</button>
           <datalist id="jrSetups"></datalist>
@@ -732,6 +751,8 @@
       <section class="panel">
         <h2>EQUITY CURVE &amp; BREAKDOWN</h2>
         <div class="scroll">
+          <div class="amber" style="font-weight:700;margin-bottom:6px">INSIGHTS</div>
+          <ul class="note-list" id="jrInsights" style="margin-bottom:12px"></ul>
           <canvas id="jrCurve" style="width:100%;height:200px;display:block" aria-label="Cumulative profit and loss of closed trades"></canvas>
           <div id="jrBreak"></div>
           <div class="amber" style="font-weight:700;margin:14px 0 6px">RISK RULES</div>
@@ -826,6 +847,7 @@
       <tr><td>RES</td><td>Earnings calendar, analyst ratings, insider trades</td></tr>
       <tr><td>PORT · BUY AAPL 10 @ 180 · SELL AAPL 5</td><td>Portfolio with live profit and loss</td></tr>
       <tr><td>ALERT BTCUSD &gt; 70000</td><td>Price alert (notification, sound, optional AI explanation)</td></tr>
+      <tr><td>PAPER LONG BTCUSD 0.01 STOP 59000 TARGET 62000 · HALF BTCUSD</td><td>Paper trade at the live price; close half a position</td></tr>
       <tr><td>MOOD (header)</td><td>Risk-on / risk-off for stocks (S&amp;P 500) and crypto (BTC); click for details</td></tr>
       <tr><td>JRNL · LOG LONG NVDA 10 @ 130 STOP 125 TARGET 145 · CLOSE NVDA @ 140</td><td>Trade journal with stats, equity curve, risk rules, CSV export and full backup</td></tr>
       <tr><td>ALRT · CALC</td><td>Alerts list and position-size calculator</td></tr>
@@ -1106,18 +1128,32 @@
       if (isNum(stop) && (side === "long" ? stop >= entry : stop <= entry)) return toast("Journal", `For a ${side}, the stop goes ${side === "long" ? "below" : "above"} the entry.`);
       const t = { sym, side, qty: +m[3], entry, stop, target: m[6] ? +m[6] : NaN };
       showView("jrnl");
-      evaluateTrade(t).then((res) => {
-        const failed = res.checks.filter((c) => c.status === "fail").map((c) => c.label);
-        logTrade({ ...t, setup: "", notes: "", grade: res.grade, failed });
-        if (res.grade === "C") toast("Logged a C-grade trade", "Failed: " + failed.join(", ") + ".", "alert");
-      });
+      gradeLater(logTrade({ ...t, setup: "", notes: "" }), t);
       return;
+    }
+    if ((m = c.match(/^PAPER (LONG|SHORT|BUY|SELL) (\S+) ([\d.]+)(?: STOP ([\d.]+))?(?: (?:TARGET|TP) ([\d.]+))?$/))) {
+      const sym = normalize(m[2]), side = /LONG|BUY/.test(m[1]) ? "long" : "short";
+      const f = paperFill(sym, side, false);
+      if (f.error) return toast("Paper trade", f.error);
+      const t = { sym, side, qty: +m[3], entry: f.price, stop: m[4] ? +m[4] : NaN, target: m[5] ? +m[5] : NaN };
+      if (isNum(t.stop) && (side === "long" ? t.stop >= t.entry : t.stop <= t.entry)) return toast("Paper trade", `For a ${side}, the stop goes ${side === "long" ? "below" : "above"} the live price ${fmt(t.entry)}.`);
+      showView("jrnl");
+      gradeLater(logTrade({ ...t, setup: "", notes: "", paper: true }), t);
+      return;
+    }
+    if ((m = c.match(/^HALF (\S+)$/))) {
+      const sym = normalize(m[1]), t = journal.find((x) => !isNum(x.exit) && bareTicker(x.sym) === bareTicker(sym));
+      if (!t) return toast("Journal", `No open trade in ${bareTicker(sym)}.`);
+      const f = t.paper ? paperFill(t.sym, t.side, true) : { price: px.get(t.sym)?.price };
+      if (!isNum(f.price)) return toast("Journal", f.error || `No live price for ${bareTicker(sym)}.`);
+      closePart(t.id, f.price, t.qty / 2);
+      return showView("jrnl");
     }
     if ((m = c.match(/^CLOSE (\S+)(?: ?(?:@|AT) ?([\d.]+))?$/))) {
       const sym = normalize(m[1]);
       const t = journal.find((x) => !isNum(x.exit) && bareTicker(x.sym) === bareTicker(sym));
       if (!t) return toast("Journal", `No open trade in ${bareTicker(sym)}.`);
-      const exit = m[2] ? +m[2] : px.get(t.sym)?.price;
+      const exit = m[2] ? +m[2] : t.paper ? paperFill(t.sym, t.side, true).price : px.get(t.sym)?.price;
       if (!isNum(exit)) return toast("Journal", `No live price for ${bareTicker(sym)}. Add the price: CLOSE ${bareTicker(sym)} @ 140`);
       closeTrade(t.id, exit);
       return showView("jrnl");
@@ -1605,6 +1641,7 @@
     px.set(tv, o);
     if (tv === symbol) renderLive(old);
     checkAlerts(tv);
+    checkTradeLevels(tv);
     schedulePort();
     if (myList.includes(tv) || tv === symbol) scheduleLists();
   }
@@ -2374,7 +2411,8 @@
   const saveJournal = () => { saveJSON("term.journal", journal); refreshPrices(true); renderJournal(); checkRules(); };
   const dir = (t) => (t.side === "short" ? -1 : 1);
   const tradePnl = (t, exit) => (exit - t.entry) * t.qty * dir(t) - (t.fees || 0);
-  const tradeR = (t, exit) => (isNum(t.stop) && t.stop > 0 && t.stop !== t.entry ? ((exit - t.entry) * dir(t)) / Math.abs(t.entry - t.stop) : NaN);
+  // R is measured against the stop you planned at entry (stop0), not a later trailing or breakeven stop.
+  const tradeR = (t, exit) => { const s0 = t.stop0 ?? t.stop; return isNum(s0) && s0 > 0 && s0 !== t.entry ? ((exit - t.entry) * dir(t)) / Math.abs(t.entry - s0) : NaN; };
   const dayKey = (iso) => ymd(new Date(iso));
   function inPeriod(iso, per) {
     if (per === "all") return true;
@@ -2386,6 +2424,21 @@
   }
   function accountSize() { return +rules.acct || +$("cAcct").value || 0; }
 
+  // Commands log at once; the checklist grade is attached when it finishes.
+  function gradeLater(rec, t) {
+    evaluateTrade(t).then((res) => {
+      rec.grade = res.grade;
+      rec.failed = res.checks.filter((c) => c.status === "fail").map((c) => c.label);
+      saveJSON("term.journal", journal);
+      if (view === "jrnl") renderJournal();
+      if (res.grade === "C") toast("C-grade trade", "Failed: " + rec.failed.join(", ") + ".", "alert");
+    });
+  }
+  function lastCell(last, sym) {
+    const c = td(isNum(last) ? fmt(last) : "—", "r"), f = freshness(sym);
+    if (f) { const t = el("span", "fresh " + f.cls, f.txt.split(" ")[0]); t.title = f.tip; t.style.marginLeft = "4px"; c.append(t); }
+    return c;
+  }
   function gradeCell(x) {
     const c = el("td");
     if (x.grade) { const g = el("span", "grade g" + x.grade, x.grade); g.title = x.failed && x.failed.length ? "Failed: " + x.failed.join(", ") : "Passed every hard check"; c.append(g); }
@@ -2399,9 +2452,12 @@
       toast("Risk rule broken", `This trade risks ${fmtUsd(risk)} (${((risk / acct) * 100).toFixed(1)}% of the account). Your limit is ${rules.risk}%.`, "alert");
     }
     if (!isNum(t.stop) || !(t.stop > 0)) toast("No stop-loss", "Logged without a stop. R-multiples need one, and so does your risk.");
-    journal.push({ id: Date.now() + Math.random(), opened: new Date().toISOString(), fees: 0, ...t });
+    const rec = { id: Date.now() + Math.random(), opened: new Date().toISOString(), fees: 0, exitPlan: "target", ...t, stop0: t.stop };
+    journal.push(rec);
     saveJournal();
-    toast("Trade logged", `${t.side.toUpperCase()} ${t.qty} ${bareTicker(t.sym)} @ ${fmt(t.entry)}`);
+    if (rec.exitPlan === "trail" || rec.exitPlan === "partial") attachAtr(rec);
+    return rec;
+    toast(t.paper ? "Paper trade opened" : "Trade logged", `${t.side.toUpperCase()} ${t.qty} ${bareTicker(t.sym)} @ ${fmt(t.entry)}${t.exitPlan && t.exitPlan !== "target" ? " · " + PLAN_NAMES[t.exitPlan] : ""}`);
   }
   function closeTrade(id, exit) {
     const t = journal.find((x) => x.id === id);
@@ -2431,8 +2487,11 @@
   function renderJournal() {
     document.querySelectorAll("#jrTabs button[data-per]").forEach((b) => b.classList.toggle("on", b.dataset.per === jrPer));
     $("jrSetups").replaceChildren(...[...new Set(journal.map((t) => t.setup).filter(Boolean))].map((s) => { const o = el("option"); o.value = s; return o; }));
-    const closed = journal.filter((t) => isNum(t.exit) && inPeriod(t.closed, jrPer)).sort((a, b) => a.closed.localeCompare(b.closed));
-    const open = journal.filter((t) => !isNum(t.exit));
+    document.querySelectorAll("#jrTabs button[data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === jrMode));
+    const closed = journal.filter((t) => isNum(t.exit) && inPeriod(t.closed, jrPer) && inMode(t)).sort((a, b) => a.closed.localeCompare(b.closed));
+    const open = journal.filter((t) => !isNum(t.exit) && inMode(t));
+    renderProcess();
+    $("jrInsights").replaceChildren(...insights(closed).map(([c, t]) => el("li", c, t)));
     const s = stats(closed);
 
     // Tiles
@@ -2454,30 +2513,37 @@
     else {
       const t = el("table", "t");
       const hr = el("tr");
-      [["SYMBOL"], ["GRADE"], ["SIDE"], ["QTY", 1], ["ENTRY", 1], ["STOP", 1], ["LAST", 1], ["DATA"], ["P&L", 1], ["R", 1], ["CLOSE AT"]].forEach(([h, r]) => hr.append(th(h, r)));
+      [["SYMBOL"], ["GRADE"], ["SIDE"], ["QTY", 1], ["ENTRY", 1], ["STOP", 1], ["LAST", 1], ["P&L", 1], ["R", 1], ["CLOSE AT"]].forEach(([h, r]) => hr.append(th(h, r)));
       t.append(hr);
       for (const x of open) {
         const last = px.get(x.sym)?.price;
         const pnl = isNum(last) ? tradePnl(x, last) : NaN, r = isNum(last) ? tradeR(x, last) : NaN;
         const tr = el("tr");
         const inp = el("input");
-        inp.type = "number"; inp.step = "any"; inp.style.width = "90px";
+        inp.type = "number"; inp.step = "any"; inp.style.width = "78px";
         inp.placeholder = isNum(last) ? String(last) : "exit";
         inp.setAttribute("aria-label", "Exit price for " + bareTicker(x.sym));
         const btn = el("button", "tbtn", "CLOSE");
         btn.type = "button";
-        btn.addEventListener("click", () => {
-          const v = inp.value ? +inp.value : last;
-          if (!inp.value) { const f = freshness(x.sym); if (f && f.cls !== "up") toast("Check the exit price", `Using a ${f.txt.toLowerCase()} price. Type your real fill instead if it differs.`); }
-          closeTrade(x.id, v);
-        });
+        const exitPx = () => {
+          if (inp.value) return +inp.value;
+          if (x.paper) { const f = paperFill(x.sym, x.side, true); if (f.error) { toast("Paper trade", f.error); return NaN; } return f.price; }
+          const f = freshness(x.sym);
+          if (f && f.cls !== "up") toast("Check the exit price", `Using a ${f.txt.toLowerCase()} price. Type your real fill instead if it differs.`);
+          return last;
+        };
+        btn.addEventListener("click", () => { const v = exitPx(); if (isNum(v)) closeTrade(x.id, v); });
+        const half = el("button", "tbtn", "HALF");
+        half.type = "button"; half.title = "Close half the position";
+        half.addEventListener("click", () => { const v = exitPx(); if (isNum(v)) closePart(x.id, v, x.qty / 2); });
         const del = el("button", "x", "✕");
         del.type = "button"; del.title = "Delete without closing";
         del.addEventListener("click", () => { journal = journal.filter((y) => y.id !== x.id); saveJournal(); });
-        const cc = el("td"); cc.append(inp, " ", btn, del);
+        const cc = el("td"); cc.append(inp, " ", btn, " ", half, del);
         const sym = td(bareTicker(x.sym), "amber"); sym.style.cursor = "pointer"; sym.addEventListener("click", () => run(x.sym));
-        tr.append(sym, gradeCell(x), td(x.side.toUpperCase(), x.side === "long" ? "up" : "down"), td(String(x.qty), "r"), td(fmt(x.entry), "r"), td(isNum(x.stop) ? fmt(x.stop) : "—", "r"),
-          td(isNum(last) ? fmt(last) : "—", "r"), freshCell(x.sym), td(fmtUsd(pnl), "r " + signCls(pnl)), td(isNum(r) ? r.toFixed(2) + "R" : "—", "r " + signCls(r)), cc);
+        if (x.paper) sym.append(" ", el("span", "chip other", "PAPER"));
+        tr.append(sym, gradeCell(x), td(x.side.toUpperCase(), x.side === "long" ? "up" : "down"), td(String(x.qty), "r"), td(fmt(x.entry), "r"), td(isNum(x.stop) ? fmt(x.stop) + (x.exitPlan === "trail" && x.stop !== x.stop0 ? " ↑trail" : x.exitPlan === "partial" && x.stop === x.entry ? " BE" : "") : "—", "r"),
+          lastCell(last, x.sym), td(fmtUsd(pnl), "r " + signCls(pnl)), td(isNum(r) ? r.toFixed(2) + "R" : "—", "r " + signCls(r)), cc);
         t.append(tr);
         if (x.notes) { const n = el("tr"); const c = td("↳ " + x.notes, "muted"); c.colSpan = 10; c.className = "muted wrap"; n.append(c); t.append(n); }
       }
@@ -2600,7 +2666,14 @@
       $("jrLogBtn").textContent = "LOG ANYWAY (C GRADE)";
       return toast("C-grade trade", "Failed: " + failed.join(", ") + ". Press LOG ANYWAY to log it regardless.", "alert");
     }
-    logTrade({ ...t, setup: $("jrSetup").value.trim(), notes: $("jrNotes").value.trim(), grade: res.grade, failed });
+    const paper = $("jrPaper").checked;
+    if (paper) {
+      const f = paperFill(t.sym, t.side, false);
+      if (f.error) return toast("Paper trade", f.error);
+      t.entry = f.price;
+      if (isNum(t.stop) && (t.side === "long" ? t.stop >= t.entry : t.stop <= t.entry)) return toast("Paper trade", `The live price ${fmt(t.entry)} is already past your stop. Adjust the stop.`);
+    }
+    logTrade({ ...t, setup: $("jrSetup").value.trim(), notes: $("jrNotes").value.trim(), grade: res.grade, failed, exitPlan: $("jrPlan").value, paper });
     $("jrForm").reset();
     cConfirm = false;
     $("jrLogBtn").textContent = "LOG TRADE";
@@ -2608,6 +2681,7 @@
     $("jrCheck").replaceChildren(el("div", "muted", "Fill in symbol, entry, stop and target to see the pre-trade checklist."));
   });
   document.querySelectorAll("#jrTabs button[data-per]").forEach((b) => b.addEventListener("click", () => { jrPer = b.dataset.per; renderJournal(); }));
+  document.querySelectorAll("#jrTabs button[data-mode]").forEach((b) => b.addEventListener("click", () => { jrMode = b.dataset.mode; store.set("term.jrMode", jrMode); renderJournal(); }));
 
   // CSV export and full backup/restore of everything this browser stores.
   function download(name, text, type) {
@@ -2620,9 +2694,9 @@
   }
   $("jrCsv").addEventListener("click", () => {
     const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const head = ["opened", "closed", "symbol", "side", "qty", "entry", "stop", "target", "exit", "pnl", "r", "setup", "notes"];
+    const head = ["opened", "closed", "symbol", "side", "qty", "entry", "stop", "target", "exit", "pnl", "r", "grade", "exit_plan", "paper", "setup", "notes"];
     const lines = journal.map((t) => [t.opened, t.closed || "", t.sym, t.side, t.qty, t.entry, t.stop ?? "", t.target ?? "", t.exit ?? "",
-      isNum(t.exit) ? tradePnl(t, t.exit).toFixed(2) : "", isNum(t.exit) && isNum(tradeR(t, t.exit)) ? tradeR(t, t.exit).toFixed(2) : "", t.setup || "", t.notes || ""].map(q).join(","));
+      isNum(t.exit) ? tradePnl(t, t.exit).toFixed(2) : "", isNum(t.exit) && isNum(tradeR(t, t.exit)) ? tradeR(t, t.exit).toFixed(2) : "", t.grade || "", t.exitPlan || "target", t.paper ? "yes" : "no", t.setup || "", t.notes || ""].map(q).join(","));
     download(`trade-journal-${ymd(new Date())}.csv`, [head.join(","), ...lines].join("\n"), "text/csv");
   });
   const BACKUP_KEYS = ["term.watch", "term.alerts", "term.portfolio", "term.journal", "term.rules", "term.cAcct", "term.cRisk", "term.symbol", "term.model", "term.alertAi"];
@@ -3710,13 +3784,154 @@
   setInterval(() => { if (view === "scan") runScan(true); }, 60_000);
   setInterval(() => { if (view !== "scan" && $("scanAlerts").checked) runScan(true); }, 5 * 60_000);
 
+  // ───────────────────────── Smarter exits, paper trading, insights, process ─────────────────────────
+  let jrMode = store.get("term.jrMode") || "all";
+  const inMode = (t) => jrMode === "all" || (jrMode === "paper" ? !!t.paper : !t.paper);
+  const PLAN_NAMES = { target: "Fixed target", trail: "Trailing stop", partial: "Half at 1R" };
+  const PAPER_SLIP = 0.0005;
+
+  // Daily ATR at entry, used for trailing stops.
+  async function attachAtr(t) {
+    try { const d = await getCandles(t.sym, "D", 60); if (!d.error) { t.atr = indicators(d).atr.at(-1); saveJSON("term.journal", journal); } } catch {}
+  }
+  // Watches live prices against each open trade's levels and alerts once per event.
+  function checkTradeLevels(tv) {
+    const p = px.get(tv)?.price;
+    if (!isNum(p)) return;
+    let changed = false;
+    for (const t of journal) {
+      if (isNum(t.exit) || t.sym !== tv) continue;
+      const s = t.side === "short" ? -1 : 1, stop0 = t.stop0 ?? t.stop;
+      t.alerted = t.alerted || {};
+      if (t.exitPlan === "trail" && isNum(t.atr)) {
+        const best = s > 0 ? Math.max(t.best ?? t.entry, p) : Math.min(t.best ?? t.entry, p);
+        if (best !== t.best) { t.best = best; changed = true; }
+        const trail = best - s * 1.5 * t.atr;
+        if (isNum(stop0) && (s > 0 ? trail > (t.stop ?? stop0) : trail < (t.stop ?? stop0))) { t.stop = trail; changed = true; }
+      }
+      const fire = (key, title, body) => { if (t.alerted[key]) return; t.alerted[key] = Date.now(); changed = true; toast(title, body, "alert"); notify(title, body); beep(); };
+      const who = `${t.paper ? "PAPER " : ""}${t.side.toUpperCase()} ${bareTicker(t.sym)}`;
+      if (isNum(t.stop) && (s > 0 ? p <= t.stop : p >= t.stop)) fire("stop", `STOP HIT · ${who}`, `Price ${fmt(p)} crossed your ${t.exitPlan === "trail" ? "trailing " : ""}stop ${fmt(t.stop)}. Close it as planned.`);
+      if (isNum(t.target) && (s > 0 ? p >= t.target : p <= t.target)) fire("target", `TARGET HIT · ${who}`, `Price ${fmt(p)} reached your target ${fmt(t.target)}.`);
+      if (t.exitPlan === "partial" && isNum(stop0)) {
+        const oneR = t.entry + s * Math.abs(t.entry - stop0);
+        if (s > 0 ? p >= oneR : p <= oneR) fire("oneR", `1R REACHED · ${who}`, `Price ${fmt(p)} is 1R in profit. Plan: take half (HALF button) and move the stop to breakeven.`);
+      }
+    }
+    if (changed) saveJSON("term.journal", journal);
+  }
+
+  // Partial close: splits off a closed record for part of the position.
+  function closePart(id, exit, part) {
+    const t = journal.find((x) => x.id === id);
+    if (!t || !(exit > 0)) return toast("Journal", "Enter an exit price above zero.");
+    const q = Math.min(t.qty, part);
+    if (q >= t.qty - 1e-12) return closeTrade(id, exit);
+    const piece = { ...t, id: Date.now() + Math.random(), qty: q, exit, closed: new Date().toISOString(), partOf: t.id, alerted: undefined };
+    t.qty = +(t.qty - q).toPrecision(12);
+    t.stop0 = t.stop0 ?? t.stop;
+    if (t.exitPlan === "partial") t.stop = t.entry; // rest at breakeven
+    journal.push(piece);
+    saveJournal();
+    toast("Partial close", `Closed ${q} ${bareTicker(t.sym)} at ${fmt(exit)} (${fmtUsd(tradePnl(piece, exit))}). ${t.qty} left${t.exitPlan === "partial" ? ", stop moved to breakeven" : ""}.`);
+  }
+  function paperFill(sym, side, closing) {
+    const p = px.get(sym)?.price, f = freshness(sym);
+    if (!isNum(p)) return { error: `No live price for ${bareTicker(sym)}. Paper trades fill at the live price.` };
+    if (f && f.cls === "down") return { error: `${bareTicker(sym)} price is ${f.txt.toLowerCase()}. Paper trades need a fresh price.` };
+    const s = side === "short" ? -1 : 1, adverse = closing ? -s : s;
+    return { price: +(p * (1 + adverse * PAPER_SLIP)).toPrecision(10) };
+  }
+
+  // Journal insights from closed trades.
+  function insights(closed) {
+    if (closed.length < 5) return [["muted", `Insights appear after 5 closed trades (${closed.length} so far).`]];
+    const out = [], sum = (a) => a.reduce((x, t) => x + tradePnl(t, t.exit), 0);
+    const by = (key) => { const m = new Map(); closed.forEach((t) => { const k = key(t); if (k == null) return; (m.get(k) || m.set(k, []).get(k)).push(t); }); return [...m].map(([k, a]) => ({ k, n: a.length, net: sum(a), win: (a.filter((t) => tradePnl(t, t.exit) > 0).length / a.length) * 100 })); };
+    const total = sum(closed);
+    const gC = closed.filter((t) => t.grade === "C"), gA = closed.filter((t) => t.grade === "A");
+    if (gC.length) {
+      const c = sum(gC);
+      out.push([c < 0 ? "down" : "up", c < 0 ? `Skipping C-grade trades would have made you ${fmtUsd(-c)} more (${gC.length} trades, ${fmtUsd(c)}).` : `Your ${gC.length} C-grade trades still made ${fmtUsd(c)}. Keep watching; small samples mislead.`]);
+    }
+    if (gA.length >= 3) out.push([sum(gA) >= 0 ? "up" : "down", `A-grade trades: ${gA.length} trades, ${fmtUsd(sum(gA))}, ${Math.round((gA.filter((t) => tradePnl(t, t.exit) > 0).length / gA.length) * 100)}% winners.`]);
+    const plans = by((t) => PLAN_NAMES[t.exitPlan] || null).filter((x) => x.n >= 3).sort((a, b) => b.net / b.n - a.net / a.n);
+    if (plans.length >= 2) out.push(["amber", `Best exit method so far: ${plans[0].k} (${fmtUsd(plans[0].net / plans[0].n)} per trade) vs ${plans.at(-1).k} (${fmtUsd(plans.at(-1).net / plans.at(-1).n)}).`]);
+    const hours = by((t) => new Date(t.opened).getHours()).filter((x) => x.n >= 3).sort((a, b) => a.net - b.net);
+    if (hours.length >= 2 && hours[0].net < 0) out.push(["down", `Worst time to enter: ${hours[0].k}:00–${hours[0].k + 1}:00 (${hours[0].n} trades, ${fmtUsd(hours[0].net)}). Best: ${hours.at(-1).k}:00 (${fmtUsd(hours.at(-1).net)}).`]);
+    const days = by((t) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(t.opened).getDay()]).filter((x) => x.n >= 3).sort((a, b) => a.net - b.net);
+    if (days.length >= 2 && days[0].net < 0) out.push(["down", `Worst day: ${days[0].k} (${days[0].n} trades, ${fmtUsd(days[0].net)}). Best: ${days.at(-1).k} (${fmtUsd(days.at(-1).net)}).`]);
+    let losses = 0;
+    const after = [];
+    for (const t of closed) { if (losses >= 2) after.push(t); losses = tradePnl(t, t.exit) <= 0 ? losses + 1 : 0; }
+    if (after.length >= 3) {
+      const w = (after.filter((t) => tradePnl(t, t.exit) > 0).length / after.length) * 100, all = (closed.filter((t) => tradePnl(t, t.exit) > 0).length / closed.length) * 100;
+      if (w < all - 10 || sum(after) < 0) out.push(["down", `After 2 losses in a row you win ${w.toFixed(0)}% (vs ${all.toFixed(0)}% overall) and made ${fmtUsd(sum(after))}. Consider stopping for the day after two losses.`]);
+    }
+    const hold = (a) => a.reduce((x, t) => x + (new Date(t.closed) - new Date(t.opened)), 0) / (a.length || 1);
+    const win = closed.filter((t) => tradePnl(t, t.exit) > 0), lose = closed.filter((t) => tradePnl(t, t.exit) <= 0);
+    if (win.length >= 2 && lose.length >= 2 && hold(lose) > hold(win) * 1.5) out.push(["down", `You hold losers ${(hold(lose) / hold(win)).toFixed(1)}× longer than winners. Let the stop do its job.`]);
+    const noStop = closed.filter((t) => !isNum(t.stop0 ?? t.stop));
+    if (noStop.length) out.push([sum(noStop) < 0 ? "down" : "amber", `${noStop.length} trades had no stop-loss: ${fmtUsd(sum(noStop))}.`]);
+    const avgW = win.length ? sum(win) / win.length : 0, avgL = lose.length ? -sum(lose) / lose.length : 0;
+    if (win.length && lose.length && avgW < avgL) out.push(["down", `Average win ${fmtUsd(avgW)} is smaller than average loss ${fmtUsd(avgL)}: you need over ${Math.round((avgL / (avgW + avgL)) * 100)}% winners just to break even.`]);
+    if (!out.length) out.push([total >= 0 ? "up" : "amber", "No problem patterns found yet. Keep logging every trade."]);
+    return out;
+  }
+
+  // The five-step process: backtest → paper → small real → weekly review → size up.
+  function renderProcess() {
+    const paper = journal.filter((t) => t.paper && isNum(t.exit)), real = journal.filter((t) => !t.paper && isNum(t.exit));
+    const ps = stats(paper), rs = stats(real), rev = store.get("term.lastReview");
+    const days = rev ? (Date.now() - +rev) / 864e5 : Infinity;
+    const steps = [
+      [lastBt && /EDGE HOLDS/.test(lastBt.verdict) ? "ok" : "todo", "1 · BACKTEST", lastBt ? `${SETUP_NAMES[lastBt.cfg.setup]} on ${bareTicker(lastBt.sym)}: ${lastBt.verdict.toLowerCase()} (${new Date(lastBt.at).toLocaleDateString()})` : "Not done. Prove a setup in BACKTEST first."],
+      [ps.n >= 20 && ps.pf >= 1.2 ? "ok" : ps.n ? "doing" : "todo", "2 · PAPER TRADE", ps.n ? `${ps.n} paper trades, profit factor ${isNum(ps.pf) ? (ps.pf === Infinity ? "∞" : ps.pf.toFixed(2)) : "—"}. Goal: 20+ trades with PF ≥ 1.2.` : "Tick 'Paper trade' on NEW TRADE to practise at live prices with no money."],
+      [real.length && !(ps.n >= 20 && ps.pf >= 1.2) ? "warn" : real.length ? "doing" : "todo", "3 · SMALL REAL MONEY", real.length ? `${rs.n} real trades, net ${fmtUsd(rs.net)}.${!(ps.n >= 20 && ps.pf >= 1.2) ? " You started real trading before passing paper trading." : ""}` : "Start only after paper trading passes, at a fraction of your normal size."],
+      [days <= 7 ? "ok" : "warn", "4 · WEEKLY REVIEW", rev ? `Last review ${new Date(+rev).toLocaleDateString()}${days > 7 ? ": overdue." : "."}` : "Not done yet. Read the insights below once a week."],
+      [rs.n >= 30 && rs.pf >= 1.2 && rs.maxDD > -(accountSize() * 0.1) ? "ok" : "todo", "5 · SIZE UP", rs.n >= 30 && rs.pf >= 1.2 ? "Results hold up. Increase size gradually, one step at a time." : `Keep size small until 30+ real trades show PF ≥ 1.2 (now ${rs.n} trades).`],
+    ];
+    const box = $("jrProcess");
+    box.replaceChildren(...steps.map(([st, name, txt]) => {
+      const d = el("div", "pstep " + st);
+      d.append(el("b", "", (st === "ok" ? "✓ " : st === "warn" ? "! " : st === "doing" ? "… " : "○ ") + name), el("span", "", txt));
+      return d;
+    }));
+    const btn = el("button", "tbtn", "MARK WEEKLY REVIEW DONE");
+    btn.type = "button";
+    btn.addEventListener("click", () => { store.set("term.lastReview", String(Date.now())); renderProcess(); toast("Weekly review", "Logged. Next one in 7 days."); });
+    box.append(btn);
+  }
+
+  // Upcoming events for the CHARTS sidebar.
+  let evSym = null;
+  async function renderEvents() {
+    const sym = symbol, box = $("cwEvents");
+    if (evSym === sym && box.childElementCount) return;
+    evSym = sym;
+    const lines = [];
+    const md = moodFor(sym), [mt, mc] = MOOD_TXT[md.state];
+    lines.push([mc, `Market: ${mt}. ${md.detail}`]);
+    if (assetClass(sym) === "stock" && finnhubKey()) {
+      const r = await fh(`calendar/earnings?from=${todayPlus(0)}&to=${todayPlus(45)}&symbol=${encodeURIComponent(bareTicker(sym))}`);
+      const e = ((r && r.earningsCalendar) || []).filter((x) => x.symbol === bareTicker(sym)).sort((a, b) => a.date.localeCompare(b.date))[0];
+      lines.push(e ? [e.date <= todayPlus(1) ? "down" : "amber", `Earnings ${e.date}${e.hour === "bmo" ? " before the open" : e.hour === "amc" ? " after the close" : ""}.`] : ["muted", "No earnings in the next 45 days."]);
+    }
+    const ev = await eventRisk(sym);
+    if (ev.events.length) ev.events.forEach((x) => lines.push(["down", "Within 24h: " + x]));
+    else if (!ev.known) lines.push(["muted", "Macro calendar (CPI, Fed, jobs): see ECO · CALENDAR on MAIN."]);
+    else lines.push(["up", "No high-impact US releases in the next 24 hours."]);
+    if (evSym !== sym) return;
+    box.replaceChildren(...lines.map(([c, t]) => el("div", c, t)));
+  }
+
   // Hooks into symbol changes and views.
   function afterSymbol() {
     lastNote = null;
     renderLive();
     renderCwQuote();
     renderLists();
-    if (view === "chart") loadChart2();
+    if (view === "chart") { loadChart2(); renderEvents(); }
     startFlow();
     if (view === "flow") enterFlow();
     $("liveCheck").textContent = "";
@@ -3732,7 +3947,7 @@
     if (v === "port") { renderPort(); refreshPrices(true); }
     if (v === "tools") { renderAlerts(); calc(); }
     if (v === "jrnl") { renderJournal(); refreshPrices(true); }
-    if (v === "chart") { loadChart2(); renderCwQuote(); renderLists(); }
+    if (v === "chart") { loadChart2(); renderCwQuote(); renderLists(); renderEvents(); }
     if (v === "flow") enterFlow();
     if (v === "scan") { renderScan(); if (Date.now() - scanAt > 50_000) runScan(false); }
     if (v === "bt" && !$("btSym").value) $("btSym").value = binSym(symbol) ? bareTicker(symbol) : "BTCUSDT";
