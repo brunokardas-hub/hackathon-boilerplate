@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Market Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&display=swap">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#000000">
 <link rel="icon" href="icon-192.png">
@@ -26,7 +29,8 @@
     --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 12px/1.4 var(--mono); }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.45 var(--mono); }
   a { color: inherit; text-decoration: none; }
   button { font: inherit; cursor: pointer; }
 
@@ -38,10 +42,11 @@
   .cmd .go { background: #1a1a1a; color: var(--up); border: 0; padding: 5px 10px; font-weight: 700; }
   .cmd .clocks { display: flex; gap: 12px; font-weight: 700; flex-wrap: wrap; }
 
-  .fkeys { display: flex; gap: 4px; padding: 4px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-  .fkeys button { background: #1a1a1a; color: var(--amber); border: 1px solid var(--line); padding: 3px 8px; }
-  .fkeys button.on { background: var(--amber); color: #000; }
-  .fkeys .hint { color: var(--muted); margin-left: auto; align-self: center; }
+  .fkeys { display: flex; gap: 2px; padding: 0 6px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; align-items: stretch; }
+  .fkeys button { background: transparent; color: var(--muted); border: 0; border-bottom: 2px solid transparent; padding: 9px 12px 7px; font-weight: 700; letter-spacing: .05em; white-space: nowrap; }
+  .fkeys button:hover { color: var(--text); }
+  .fkeys button.on { color: var(--amber); border-bottom-color: var(--amber); }
+  .fkeys .hint { color: var(--muted); margin-left: auto; align-self: center; white-space: nowrap; padding-left: 12px; font-size: 11px; }
 
   .tape { height: 46px; border-bottom: 1px solid var(--line); overflow: hidden; }
 
@@ -63,7 +68,7 @@
   .panel > h2 .maxbtn { background: transparent; color: var(--amber); border: 1px solid var(--line); padding: 0 6px; font: inherit; font-size: 10px; }
   .panel > h2 .maxbtn:hover { background: var(--amber); color: #000; }
   .panel { background: var(--panel); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-  .panel > h2 { margin: 0; padding: 3px 8px; font-size: 11px; font-weight: 700; background: #111; color: var(--amber); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; }
+  .panel > h2 { margin: 0; padding: 5px 10px; font-size: 12px; align-items: center; font-weight: 700; background: #111; color: var(--amber); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; }
   .panel > h2 small { color: var(--muted); font-weight: 400; }
   .panel .body { flex: 1; min-height: 0; position: relative; overflow: hidden; }
   .panel .body > .tradingview-widget-container { position: absolute; inset: 0; }
@@ -170,8 +175,8 @@
   .cols > .panel { min-height: 0; }
   .cols .scroll { flex: 1; overflow: auto; padding: 8px; min-height: 0; }
   table.t { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-  table.t th { text-align: left; color: var(--muted); font-weight: 400; font-size: 11px; padding: 3px 6px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
-  table.t td { padding: 3px 6px; border-bottom: 1px solid #141414; white-space: nowrap; }
+  table.t th { text-align: left; color: var(--muted); font-weight: 400; font-size: 11px; padding: 5px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
+  table.t td { padding: 5px 8px; border-bottom: 1px solid #141414; white-space: nowrap; }
   table.t td.r, table.t th.r { text-align: right; }
   table.t tr.mine td:first-child { color: var(--amber); }
   table.t tr.total td { border-top: 1px solid var(--amber); font-weight: 700; }
@@ -228,6 +233,72 @@
   .rulebar { background: var(--down); color: #000; font-weight: 700; padding: 6px 10px; }
   .rulebar.soft, .offline.soft { background: var(--amber); }
 
+  /* Friendlier controls */
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+  @media (pointer: coarse) {
+    .fkeys button { padding: 12px 14px 10px; }
+    .tbtn, .form button, .form input, .form select, .ml-add input, .ml-add button, .cw-bar button, .cw-bar select { min-height: 38px; }
+    .ml-row { padding-block: 10px; }
+  }
+  .gear { background: #000; color: var(--amber); border: 0; padding: 5px 10px; font-weight: 700; }
+
+  /* Settings window and welcome card */
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: flex; align-items: flex-start; justify-content: center; padding: 60px 16px 16px; z-index: 30; overflow-y: auto; }
+  .modal[hidden] { display: none; }
+  .modal .box { background: #0a0a0a; border: 1px solid var(--amber); width: 100%; max-width: 620px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .modal h3 { margin: 0; color: var(--amber); letter-spacing: .08em; }
+  .modal h4 { margin: 0 0 6px; font-size: 11px; color: var(--muted); letter-spacing: .1em; font-weight: 500; }
+  .keyrow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .keyrow .top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .keyrow .ctl { display: flex; gap: 6px; }
+  .keyrow input { flex: 1; min-width: 0; background: #000; color: var(--amber); border: 1px solid var(--line); padding: 7px 8px; font: inherit; }
+  .keyrow a, .welcome a { color: var(--blue); }
+  .welcome { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 10px 14px; background: #0d0a05; border-bottom: 1px solid var(--amber); }
+  .welcome ol { margin: 0; padding-left: 18px; display: flex; gap: 6px 24px; flex-wrap: wrap; }
+  .welcome .acts { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+
+  /* My list */
+  .ptabs { display: flex; gap: 2px; }
+  .ptabs button { background: transparent; color: var(--muted); border: 0; border-bottom: 2px solid transparent; padding: 2px 6px; font: inherit; font-weight: 700; }
+  .ptabs button.on { color: var(--amber); border-bottom-color: var(--amber); }
+  .lpane { position: absolute; inset: 0; overflow-y: auto; }
+  .lpane > .tradingview-widget-container { position: absolute; inset: 0; }
+  .ml-add { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  .ml-add input { flex: 1; min-width: 0; background: #000; color: var(--amber); border: 1px solid var(--line); padding: 6px 8px; font: inherit; text-transform: uppercase; }
+  .ml-add button { background: #1a1a1a; color: var(--amber); border: 1px solid var(--line); padding: 4px 10px; font-weight: 700; }
+  .ml-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto 18px; gap: 4px 10px; align-items: center; padding: 7px 10px; border-bottom: 1px solid #141414; border-left: 3px solid transparent; cursor: pointer; }
+  .ml-row:hover { background: #0f0f0f; }
+  .ml-row.cur { border-left-color: var(--amber); background: #120d06; }
+  .ml-row .tk { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ml-row .ex { color: var(--muted); font-size: 10px; display: block; font-weight: 400; }
+  .ml-row .pr { font-size: 15px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; transition: background-color .5s; padding: 0 3px; }
+  .ml-row .pr.f-up { background: rgba(74,246,38,.25); } .ml-row .pr.f-down { background: rgba(255,67,61,.25); }
+  .ml-row .ch { text-align: right; min-width: 74px; font-variant-numeric: tabular-nums; }
+  .ml-row .rm { background: transparent; border: 0; color: #555; padding: 0; font-size: 14px; }
+  .ml-row .rm:hover { color: var(--down); }
+  .ml-note { padding: 8px 10px; color: var(--muted); font-size: 11px; border-bottom: 1px solid var(--line); }
+  .ml-note button { background: var(--amber); color: #000; border: 0; padding: 3px 8px; font-weight: 700; margin-left: 6px; }
+  #p-note.collapsed .note-body { display: none; }
+  #p-note > h2 { cursor: pointer; }
+
+  /* CHARTS workspace */
+  .chartws { display: grid; grid-template-columns: minmax(0, 1fr) 320px; height: calc(100vh - 110px); min-height: 520px; gap: 1px; background: var(--line); }
+  .cw-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--panel); }
+  .cw-bar { display: flex; gap: 4px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .cw-bar .grp { display: flex; gap: 2px; padding-right: 8px; margin-right: 4px; border-right: 1px solid var(--line); }
+  .cw-bar button { background: transparent; color: var(--muted); border: 1px solid transparent; padding: 3px 8px; font: inherit; font-weight: 700; }
+  .cw-bar button:hover { color: var(--text); }
+  .cw-bar button.on { color: #000; background: var(--amber); }
+  .cw-bar select { background: #000; color: var(--amber); border: 1px solid var(--line); padding: 3px 6px; font: inherit; }
+  .cw-bar .sym { color: var(--amber); font-weight: 700; font-size: 15px; margin-right: 8px; }
+  .cw-chart { flex: 1; position: relative; min-height: 0; }
+  .cw-side { display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
+  .cw-quote { padding: 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+  .cw-quote .big { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cw-quote .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .cw-side h2 { margin: 0; padding: 5px 10px; font-size: 12px; background: #111; color: var(--amber); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
+  .cw-list { flex: 1; overflow-y: auto; min-height: 0; }
+
   /* Toasts and install button */
   .toasts { position: fixed; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 20; max-width: min(360px, calc(100vw - 24px)); }
   .toast { background: #0a0a0a; border: 1px solid var(--amber); padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.6); }
@@ -238,8 +309,8 @@
   @media (max-width: 1100px) {
     .grid {
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: 110px 72vh 520px 680px 360px 420px 420px;
-      grid-template-areas: "info" "chart" "news" "quote" "ta" "fa" "eco";
+      grid-template-rows: 72vh 640px 110px 520px 360px 420px 420px;
+      grid-template-areas: "chart" "quote" "info" "news" "ta" "fa" "eco";
       height: auto; min-height: 0;
     }
     .cmd .clocks { display: none; }
@@ -249,6 +320,10 @@
     .full { height: auto; min-height: calc(100vh - 110px); }
     .full .body { min-height: 70vh; }
     .cols { grid-template-columns: minmax(0, 1fr) !important; }
+    .chartws { grid-template-columns: minmax(0, 1fr); height: auto; }
+    .cw-chart { height: 65vh; flex: none; }
+    .cw-list { max-height: none; }
+    .welcome .acts { margin-left: 0; }
     .cols > .panel { min-height: 420px; }
     .gridcharts.n2, .gridcharts.n4 { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-rows: 60vh; }
     #p-note { max-height: none; }
@@ -268,38 +343,75 @@
   <div class="clocks" id="clocks"></div>
   <div class="srcs" id="srcs" aria-label="Data sources"></div>
   <button class="install" id="installBtn" type="button" hidden>⤓ INSTALL APP</button>
+  <button class="gear" id="gearBtn" type="button" title="Settings: keys, data sources, backup">⚙ SETTINGS</button>
 </header>
 
 <div class="offline" id="ruleBanner" hidden></div>
 <div class="offline" id="offline" hidden>OFFLINE: prices, alerts and charts are frozen until the connection comes back.</div>
 <div class="statusbox" id="statusBox" hidden></div>
-<nav class="fkeys">
+<nav class="fkeys" aria-label="Screens">
   <button data-cmd="MAIN" data-view="main" class="on">MAIN</button>
-  <button data-cmd="HEAT" data-view="heat">HEAT · HEATMAP</button>
-  <button data-cmd="EQS" data-view="eqs">EQS · SCREENER</button>
-  <button data-cmd="GRID" data-view="grid">GRID · MULTI-CHART</button>
-  <button data-cmd="RES" data-view="res">RES · RESEARCH</button>
-  <button data-cmd="PORT" data-view="port">PORT · PORTFOLIO</button>
-  <button data-cmd="ALRT" data-view="tools">ALRT · ALERTS &amp; RISK</button>
-  <button data-cmd="JRNL" data-view="jrnl">JRNL · JOURNAL</button>
-  <button data-cmd="AI" data-view="ai">AI · ANALYST</button>
-  <span class="sep"></span>
-  <button data-cmd="N">N · NEWS</button>
-  <button data-cmd="GP">GP · CHART</button>
-  <button data-cmd="FA">FA · FINANCIALS</button>
-  <button data-cmd="TA">TA · TECHNICALS</button>
-  <button data-cmd="ECO">ECO · CALENDAR</button>
-  <button data-cmd="HELP">HELP</button>
-  <span class="hint">Type a ticker or command, then Enter. Press / to focus the command line.</span>
+  <button data-cmd="CHARTS" data-view="chart">CHARTS</button>
+  <button data-cmd="GRID" data-view="grid">MULTI-CHART</button>
+  <button data-cmd="HEAT" data-view="heat">HEATMAP</button>
+  <button data-cmd="EQS" data-view="eqs">SCREENER</button>
+  <button data-cmd="RES" data-view="res">RESEARCH</button>
+  <button data-cmd="PORT" data-view="port">PORTFOLIO</button>
+  <button data-cmd="JRNL" data-view="jrnl">JOURNAL</button>
+  <button data-cmd="ALRT" data-view="tools">ALERTS</button>
+  <button data-cmd="AI" data-view="ai">AI ANALYST</button>
+  <button data-cmd="HELP">? HELP</button>
+  <span class="hint">Type a ticker or command in the orange bar · press / to jump there</span>
 </nav>
+<div class="welcome" id="welcome" hidden>
+  <b class="amber">WELCOME</b>
+  <ol>
+    <li>Type a ticker (AAPL, BTCUSD, EURUSD) in the orange bar and press Enter.</li>
+    <li>Add a free Finnhub key in Settings for stock prices, research and news.</li>
+    <li>Use CHARTS for a big chart next to your list.</li>
+  </ol>
+  <div class="acts">
+    <button type="button" class="tbtn" id="wcSettings">⚙ OPEN SETTINGS</button>
+    <button type="button" class="tbtn" id="wcCharts">OPEN CHARTS</button>
+    <button type="button" class="tbtn" id="wcClose">GOT IT</button>
+  </div>
+</div>
+<div class="modal" id="settings" hidden role="dialog" aria-modal="true" aria-labelledby="setTitle">
+  <div class="box">
+    <h3 id="setTitle">⚙ SETTINGS</h3>
+    <div>
+      <h4>KEYS (SAVED ONLY IN THIS BROWSER)</h4>
+      <div class="keyrow">
+        <div class="top"><b>Finnhub: free</b><span class="muted" id="setFhState"></span></div>
+        <span class="muted">US stock and FX prices, live trades, research, analyst score for stocks, headlines. <a href="https://finnhub.io/register" target="_blank" rel="noopener">Get a free key</a></span>
+        <div class="ctl"><input id="setFh" type="password" autocomplete="off" placeholder="paste your Finnhub key"><button type="button" class="tbtn" id="setFhBtn">SAVE</button></div>
+      </div>
+      <div class="keyrow">
+        <div class="top"><b>Anthropic: pay per use</b><span class="muted" id="setAiState"></span></div>
+        <span class="muted">The AI analyst, morning brief, alert explanations and journal review. About $0.05–0.15 per question. <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">Get a key</a></span>
+        <div class="ctl"><input id="setAi" type="password" autocomplete="off" placeholder="sk-ant-…"><button type="button" class="tbtn" id="setAiBtn">SAVE</button></div>
+      </div>
+    </div>
+    <div><h4>DATA SOURCES</h4><div id="setSrcs"></div></div>
+    <div>
+      <h4>YOUR DATA</h4>
+      <p class="muted" style="margin:0 0 8px">Your watchlist, alerts, portfolio and journal are saved in this browser only. Back them up, then restore the file on another device.</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="tbtn" id="setBackup">BACKUP ALL</button><button type="button" class="tbtn" id="setRestore">RESTORE</button><button type="button" class="tbtn" id="setInstall" hidden>⤓ INSTALL APP</button></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end"><button type="button" class="tbtn on" id="setClose">DONE</button></div>
+  </div>
+</div>
 
 <div class="tape" id="tape"></div>
 
 <main class="grid view active" id="v-main">
   <section class="panel" id="p-info"><h2>DES · SECURITY <small id="symLabel"></small></h2><div class="body" id="w-info"></div></section>
   <div id="p-left">
-    <section class="panel" id="p-note"><h2>NOTE · ANALYST SCORE <small id="noteSrc"></small></h2><div class="note-body" id="w-note"></div></section>
-    <section class="panel" id="p-quote"><h2>MONITOR <small>ADD / DEL &lt;ticker&gt; edits My list</small></h2><div class="body" id="w-quote"></div></section>
+    <section class="panel" id="p-note"><h2 id="noteHead" title="Click to show or hide">ANALYST SCORE <small><span id="noteSrc"></span> <span id="noteTog">▾</span></small></h2><div class="note-body" id="w-note"></div></section>
+    <section class="panel" id="p-quote">
+      <h2><span class="ptabs" role="tablist"><button type="button" data-lt="list" class="on">MY LIST</button><button type="button" data-lt="mkts">MARKETS</button></span><small id="listMeta"></small></h2>
+      <div class="body"><div class="lpane" id="w-mylist"></div><div class="lpane" id="w-quote" hidden></div></div>
+    </section>
   </div>
   <section class="panel" id="p-chart"><h2>GP · CHART <button type="button" class="maxbtn" id="maxBtn" title="Chart fills the screen (Esc to exit)">⤢ MAX</button></h2>
     <div class="live" id="liveStrip"><span class="amber" id="liveSym"></span><span class="px" id="livePx">—</span><span class="chg" id="liveChg"></span><span class="fresh muted" id="liveFresh" hidden></span><canvas id="liveSpark" aria-label="Price ticks since the page opened"></canvas><span class="check" id="liveCheck"></span><span class="src" id="liveSrc"></span></div>
@@ -325,6 +437,37 @@
   <section class="panel" id="p-fa"><h2>FA · FINANCIALS <small>stocks only</small></h2><div class="body" id="w-fa"></div></section>
   <section class="panel" id="p-eco"><h2>ECO · ECONOMIC CALENDAR</h2><div class="body" id="w-eco"></div></section>
 </main>
+
+<section class="view" id="v-chart">
+  <div class="chartws">
+    <div class="cw-main">
+      <div class="cw-bar" id="cwBar">
+        <span class="sym" id="cwSym"></span>
+        <span class="grp" id="cwIv">
+          <button type="button" data-iv="1">1m</button><button type="button" data-iv="5">5m</button><button type="button" data-iv="15">15m</button><button type="button" data-iv="60">1H</button><button type="button" data-iv="240">4H</button><button type="button" data-iv="D">1D</button><button type="button" data-iv="W">1W</button>
+        </span>
+        <span class="grp" id="cwSt">
+          <button type="button" data-st="1" title="Candles">CANDLES</button><button type="button" data-st="8" title="Heikin Ashi">HEIKIN</button><button type="button" data-st="2" title="Line">LINE</button><button type="button" data-st="3" title="Area">AREA</button>
+        </span>
+        <label class="muted">Indicators
+          <select id="cwInd">
+            <option value="clean">None</option>
+            <option value="trend">Trend: EMA + VWAP</option>
+            <option value="momentum">Momentum: RSI + MACD</option>
+            <option value="volatility">Volatility: Bollinger + ATR</option>
+            <option value="all">All of the above</option>
+          </select>
+        </label>
+      </div>
+      <div class="cw-chart"><div id="w-chart2" style="position:absolute;inset:0"></div></div>
+    </div>
+    <aside class="cw-side">
+      <div class="cw-quote" id="cwQuote"></div>
+      <h2><span>MY LIST</span><small class="muted">click to chart</small></h2>
+      <div class="cw-list" id="cwList"></div>
+    </aside>
+  </div>
+</section>
 
 <section class="view" id="v-heat">
   <div class="full">
@@ -686,10 +829,8 @@
       symbols: watchGroups().flatMap((g) => g.symbols).map(([proName, title]) => ({ proName, title })),
       showSymbolLogo: false, displayMode: "adaptive", height: 46,
     });
-    embed("w-quote", "market-quotes", {
-      symbolsGroups: watchGroups().map((g) => ({ name: g.name, symbols: g.symbols.map(([name, displayName]) => ({ name, displayName })) })),
-      showSymbolLogo: false,
-    });
+    // The multi-asset monitor loads when its MARKETS tab is open.
+    if (typeof listTab !== "undefined" && listTab === "mkts") embedQuotes(); else quoteDirtyFlag();
     embed("w-eco", "events", { importanceFilter: "0,1", countryFilter: "us,eu,gb,jp,cn,de,ca,au,ch" });
   }
 
@@ -898,7 +1039,9 @@
     if (c === "HELP" || c === "?") return document.getElementById("help").classList.add("open");
     if (c === "N" || c === "NEWS") return flash("p-news");
     if (c === "TOP") { setFeed("general"); return flash("p-news"); }
-    if (c === "GP" || c === "CHART") return flash("p-chart");
+    if (c === "GP") return flash("p-chart");
+    if (["CHART", "CHARTS"].includes(c)) return showView("chart");
+    if (c === "SETTINGS" || c === "KEYS") return openSettings();
     if (c === "MAX") return setMax(true);
     if (c === "FA") return flash("p-fa");
     if (c === "TA") return flash("p-ta");
@@ -909,7 +1052,7 @@
     store.set("term.symbol", symbol);
     if (feed !== "symbol") setFeed("symbol");
     loadSymbol();
-    showView("main");
+    if (view !== "chart") showView("main");
   }
 
   // ── Views: heatmap, screener, AI analyst ──
@@ -987,7 +1130,7 @@
     try {
       const res = await fetch(`https://finnhub.io/api/v1/${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(key)}`);
       if (res.ok) setStatus("fhr", "ok", "Last answer " + new Date().toLocaleTimeString() + ".");
-      else if (res.status === 401) setStatus("fhr", "err", "Finnhub rejected the key. Check it in the NEWS panel.");
+      else if (res.status === 401) setStatus("fhr", "err", "Finnhub rejected the key. Check it in ⚙ Settings.");
       else if (res.status === 429) setStatus("fhr", "warn", "Finnhub rate limit reached (free plan: 60 calls a minute). Data will lag for a minute.");
       else if (res.status === 403 && !/price-target/.test(path)) setStatus("fhr", "warn", "Finnhub refused a request your plan doesn't include.");
       return res.ok ? await res.json() : null;
@@ -1213,7 +1356,7 @@
   document.querySelectorAll("#newsTabs button").forEach((b) => b.addEventListener("click", () => setFeed(b.dataset.feed)));
   document.getElementById("help").addEventListener("click", (e) => { if (e.target.id === "help") e.currentTarget.classList.remove("open"); });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { document.getElementById("help").classList.remove("open"); if (document.getElementById("v-main").classList.contains("max")) setMax(false); }
+    if (e.key === "Escape") { document.getElementById("help").classList.remove("open"); closeSettings(); if (document.getElementById("v-main").classList.contains("max")) setMax(false); }
     if (e.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) { e.preventDefault(); document.getElementById("cmdInput").focus(); }
   });
 
@@ -1290,6 +1433,8 @@
     myList = [...myList, ...added];
     saveJSON("term.watch", myList);
     loadStatic();
+    refreshPrices(true);
+    renderLists();
     toast("Added to My list", added.join(", "));
   }
   function delWatch(raw) {
@@ -1298,6 +1443,7 @@
     myList = myList.filter((s) => !keys.some((k) => s === normalize(k) || bareTicker(s) === k));
     saveJSON("term.watch", myList);
     loadStatic();
+    renderLists();
     toast("My list", before === myList.length ? "Not on your list." : "Removed " + keys.join(", ") + ".");
   }
 
@@ -1326,6 +1472,7 @@
     alerts.forEach((a) => { if (!a.fired) s.add(a.sym); });
     portfolio.forEach((p) => s.add(p.sym));
     if (typeof journal !== "undefined") journal.forEach((t) => { if (!isNum(t.exit)) s.add(t.sym); });
+    myList.forEach((x) => s.add(x));
     return [...s];
   }
   function setPx(tv, price, prev, live, ts) {
@@ -1348,6 +1495,7 @@
     if (tv === symbol) renderLive(old);
     checkAlerts(tv);
     schedulePort();
+    if (myList.includes(tv) || tv === symbol) scheduleLists();
   }
   async function pollCrypto() {
     const pairs = [...new Set(watchedSyms().map(binSym).filter(Boolean))];
@@ -1385,7 +1533,7 @@
   let ws = null, wsKey = null, wsSubs = new Set(), wsRetry = 5000;
   function wsSync() {
     const key = finnhubKey();
-    if (!key) { if (ws) { const w = ws; ws = null; w.close(); } setStatus("fhw", "off", "Off: add a free Finnhub key (NEWS panel) for real-time stock, FX and crypto trades."); setStatus("fhr", "off", "Off: add a free Finnhub key (NEWS panel) for stock quotes, research and headlines."); return; }
+    if (!key) { if (ws) { const w = ws; ws = null; w.close(); } setStatus("fhw", "off", "Off: add a free Finnhub key (⚙ Settings) for real-time stock, FX and crypto trades."); setStatus("fhr", "off", "Off: add a free Finnhub key (⚙ Settings) for stock quotes, research and headlines."); return; }
     if (!ws || wsKey !== key) return connectWs(key);
     if (ws.readyState !== 1) return;
     const want = new Set(watchedSyms().map(fhSym).filter(Boolean));
@@ -1434,8 +1582,8 @@
       $("liveCheck").textContent = "";
       const c = assetClass(symbol);
       src.textContent = c === "macro" ? "Live strip covers stocks, crypto and FX. The chart has live data for every symbol."
-        : c === "stock" && !finnhubKey() ? "Live price: add a free Finnhub key in the NEWS panel (crypto works without one)."
-        : c === "forex" && !finnhubKey() ? "Live FX price: add a free Finnhub key in the NEWS panel."
+        : c === "stock" && !finnhubKey() ? "Live price: add a free Finnhub key in ⚙ Settings (crypto works without one)."
+        : c === "forex" && !finnhubKey() ? "Live FX price: add a free Finnhub key in ⚙ Settings."
         : "Waiting for the first price…";
       drawSpark();
       return;
@@ -1457,6 +1605,7 @@
     src.textContent = (o.live ? "Finnhub live trades" : c === "crypto" ? "Binance · every 10 s" : "Finnhub · every 60 s") + (c === "crypto" ? " · change is 24 h" : "");
     renderFresh();
     drawSpark();
+    renderCwQuote();
   }
   function drawSpark() {
     const cv = $("liveSpark");
@@ -1493,6 +1642,8 @@
   function renderNote(score, lines, inputs) {
     const body = $("w-note");
     const [lbl, cls] = scoreLabel(score);
+    lastNote = { sym: symbol, score, lbl, cls };
+    renderCwQuote();
     const head = el("div", "score");
     head.append(el("span", "num " + cls, String(Math.round(score))), el("span", "muted", "/100"), el("span", "lbl " + cls, lbl));
     const meter = el("div", "meter");
@@ -1512,7 +1663,7 @@
     try {
       if (c === "crypto" && binSym(sym)) await noteCrypto(sym, seq);
       else if (c === "stock" && finnhubKey()) await noteStock(sym, seq);
-      else if (c === "stock") msgIn("w-note", "Add a free Finnhub key in the NEWS panel to get the analyst note and score for stocks. Crypto works without a key.");
+      else if (c === "stock") msgIn("w-note", "Add a free Finnhub key in ⚙ Settings to get the analyst note and score for stocks. Crypto works without a key.");
       else msgIn("w-note", "The score covers US stocks (with a Finnhub key) and crypto. For this symbol, see TA · TECHNICAL SUMMARY below the chart.");
     } catch {
       if (seq === noteSeq) msgIn("w-note", "Couldn't load the data for the note. It will retry when you load a symbol again.");
@@ -1589,7 +1740,7 @@
   async function loadRes() {
     $("resCtx").textContent = "symbol: " + symbol;
     if (!finnhubKey()) {
-      ["ernBody", "anrBody", "insBody"].forEach((id) => msgIn(id, "Add a free Finnhub key in the NEWS panel on MAIN to load research data."));
+      ["ernBody", "anrBody", "insBody"].forEach((id) => msgIn(id, "Add a free Finnhub key in ⚙ Settings to load research data."));
       return;
     }
     loadErn();
@@ -1803,7 +1954,7 @@
     saveAlerts();
     toast("Alert set", `${bareTicker(sym)} ${op === ">" ? "above" : "below"} ${fmt(level)}. Checks while this page is open.`);
     if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().then(renderAlerts);
-    if (!binSym(sym) && !finnhubKey()) toast("No price feed for this alert", "Add a free Finnhub key in the NEWS panel. Crypto alerts work without one.");
+    if (!binSym(sym) && !finnhubKey()) toast("No price feed for this alert", "Add a free Finnhub key in ⚙ Settings. Crypto alerts work without one.");
   }
   let audio = null;
   function beep() {
@@ -1858,7 +2009,7 @@
     $("notifBtn").textContent = perm === "granted" ? "NOTIFICATIONS ON" : perm === "denied" ? "NOTIFICATIONS BLOCKED" : perm === "unsupported" ? "NO NOTIFICATIONS" : "ENABLE NOTIFICATIONS";
     $("notifBtn").disabled = perm !== "default";
     $("alrtStatus").textContent = "checks only while this page is open";
-    if (!alerts.length) return msgIn("alertBody", "No alerts yet. Crypto alerts work with no key. Stock and FX alerts need a free Finnhub key (NEWS panel on MAIN).");
+    if (!alerts.length) return msgIn("alertBody", "No alerts yet. Crypto alerts work with no key. Stock and FX alerts need a free Finnhub key (⚙ Settings).");
     const t = el("table", "t");
     const hr = el("tr");
     [["SYMBOL"], ["WHEN"], ["LEVEL", 1], ["NOW", 1], ["DISTANCE", 1], ["STATUS"], [""]].forEach(([h, r]) => hr.append(th(h, r)));
@@ -1988,8 +2139,8 @@
   const SRC = {
     tv: { label: "TV", name: "TradingView charts & widgets", state: "warn", msg: "Loading…" },
     bin: { label: "BIN", name: "Binance crypto prices", state: "off", msg: "Not in use yet." },
-    fhr: { label: "FH", name: "Finnhub quotes & research", state: "off", msg: "Off: add a free Finnhub key (NEWS panel)." },
-    fhw: { label: "LIVE", name: "Finnhub real-time trades", state: "off", msg: "Off: add a free Finnhub key (NEWS panel)." },
+    fhr: { label: "FH", name: "Finnhub quotes & research", state: "off", msg: "Off: add a free Finnhub key (⚙ Settings)." },
+    fhw: { label: "LIVE", name: "Finnhub real-time trades", state: "off", msg: "Off: add a free Finnhub key (⚙ Settings)." },
   };
   let binLastTry = 0, wsLastMsg = 0;
   function setStatus(k, state, msg) {
@@ -2375,9 +2526,208 @@
 
   checkRules();
 
+  // ───────────────────────── My list (readable live table) ─────────────────────────
+  let listTab = store.get("term.listTab") || "list", quoteDirty = true;
+  const shownPx = new Map();
+  function listRows(host) {
+    const frag = [];
+    const add = el("form", "ml-add");
+    const inp = el("input");
+    inp.placeholder = "Add symbol: TSLA, ETHUSD…";
+    inp.setAttribute("aria-label", "Add a symbol to My list");
+    inp.autocomplete = "off";
+    const btn = el("button", "", "+ ADD");
+    btn.type = "submit";
+    add.append(inp, btn);
+    add.addEventListener("submit", (e) => { e.preventDefault(); if (inp.value.trim()) { addWatch(inp.value); inp.value = ""; } });
+    frag.push(add);
+    if (myList.some((sy) => assetClass(sy) === "stock") && !finnhubKey()) {
+      const n = el("div", "ml-note", "Stock prices need a free Finnhub key. Crypto works without one.");
+      const b = el("button", "", "ADD KEY");
+      b.type = "button";
+      b.addEventListener("click", openSettings);
+      n.append(b);
+      frag.push(n);
+    }
+    if (!myList.length) frag.push(el("div", "ml-note", "Your list is empty. Add a symbol above."));
+    for (const sy of myList) {
+      const o = px.get(sy) || {};
+      const row = el("div", "ml-row" + (sy === symbol ? " cur" : ""));
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.title = "Chart " + sy;
+      const name = el("div", "tk", bareTicker(sy));
+      name.append(el("span", "ex", sy.includes(":") ? sy.split(":")[0] : assetClass(sy)));
+      const pr = el("div", "pr", isNum(o.price) ? fmt(o.price) : assetClass(sy) === "macro" ? "chart only" : "—");
+      if (!isNum(o.price)) pr.classList.add("muted");
+      const key = host + sy, prevShown = shownPx.get(key);
+      if (isNum(o.price) && isNum(prevShown) && o.price !== prevShown) {
+        pr.classList.add(o.price > prevShown ? "f-up" : "f-down");
+        setTimeout(() => pr.classList.remove("f-up", "f-down"), 600);
+      }
+      if (isNum(o.price)) shownPx.set(key, o.price);
+      const pct = isNum(o.price) && isNum(o.prev) ? (o.price / o.prev - 1) * 100 : NaN;
+      const ch = el("div", "ch " + signCls(pct), fmtPct(pct));
+      const f = freshness(sy);
+      if (f) { const d = el("span", "dot " + ({ up: "ok", amber: "warn", down: "err", muted: "off" }[f.cls])); d.title = f.txt + ": " + f.tip; d.style.marginLeft = "6px"; ch.append(d); }
+      const rm = el("button", "rm", "✕");
+      rm.type = "button";
+      rm.title = "Remove " + bareTicker(sy);
+      rm.addEventListener("click", (e) => { e.stopPropagation(); delWatch(bareTicker(sy)); });
+      row.append(name, pr, ch, rm);
+      const go = () => run(sy);
+      row.addEventListener("click", go);
+      row.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+      frag.push(row);
+    }
+    return frag;
+  }
+  function renderLists() {
+    if (view === "main" && listTab === "list") $("w-mylist").replaceChildren(...listRows("m"));
+    if (view === "chart") $("cwList").replaceChildren(...listRows("c"));
+    $("listMeta").textContent = listTab === "list" ? `${myList.length} symbols` : "";
+  }
+  let listTimer = null;
+  function scheduleLists() { if (!listTimer) listTimer = setTimeout(() => { listTimer = null; renderLists(); }, 500); }
+  function setListTab(t) {
+    listTab = t;
+    store.set("term.listTab", t);
+    document.querySelectorAll("#p-quote .ptabs button").forEach((b) => b.classList.toggle("on", b.dataset.lt === t));
+    $("w-mylist").hidden = t !== "list";
+    $("w-quote").hidden = t !== "mkts";
+    if (t === "mkts" && quoteDirty) embedQuotes();
+    renderLists();
+  }
+  function embedQuotes() {
+    quoteDirty = false;
+    embed("w-quote", "market-quotes", {
+      symbolsGroups: watchGroups().map((g) => ({ name: g.name, symbols: g.symbols.map(([name, displayName]) => ({ name, displayName })) })),
+      showSymbolLogo: false,
+    });
+  }
+  document.querySelectorAll("#p-quote .ptabs button").forEach((b) => b.addEventListener("click", () => setListTab(b.dataset.lt)));
+
+  // Collapsible analyst score so the list gets more room.
+  function setNoteCollapsed(c) {
+    $("p-note").classList.toggle("collapsed", c);
+    $("noteTog").textContent = c ? "▸" : "▾";
+    store.set("term.noteCollapsed", c ? "1" : null);
+  }
+  $("noteHead").addEventListener("click", () => setNoteCollapsed(!$("p-note").classList.contains("collapsed")));
+  setNoteCollapsed(store.get("term.noteCollapsed") === "1");
+
+  // ───────────────────────── CHARTS workspace ─────────────────────────
+  const STUDY_SETS = {
+    clean: [], trend: ["MAExp@tv-basicstudies", "VWAP@tv-basicstudies"], momentum: ["RSI@tv-basicstudies", "MACD@tv-basicstudies"],
+    volatility: ["BB@tv-basicstudies", "ATR@tv-basicstudies"],
+    all: ["MAExp@tv-basicstudies", "VWAP@tv-basicstudies", "RSI@tv-basicstudies", "MACD@tv-basicstudies", "BB@tv-basicstudies"],
+  };
+  let cw = { iv: store.get("term.cwIv") || "D", st: store.get("term.cwSt") || "1", ind: store.get("term.cwInd") || "trend" }, cwLoaded = "";
+  function loadChart2(force) {
+    document.querySelectorAll("#cwIv button").forEach((b) => b.classList.toggle("on", b.dataset.iv === cw.iv));
+    document.querySelectorAll("#cwSt button").forEach((b) => b.classList.toggle("on", b.dataset.st === cw.st));
+    $("cwInd").value = cw.ind;
+    $("cwSym").textContent = bareTicker(symbol);
+    const key = [symbol, cw.iv, cw.st, cw.ind].join("|");
+    if (!force && key === cwLoaded) return;
+    cwLoaded = key;
+    $("w-chart2").replaceChildren();
+    ensureTv(() => new window.TradingView.widget({
+      container_id: "w-chart2", autosize: true, symbol, interval: cw.iv, style: cw.st, studies: STUDY_SETS[cw.ind] || [],
+      timezone: "exchange", theme: "dark", locale: "en", toolbar_bg: "#000000", enable_publishing: false,
+      allow_symbol_change: false, hide_side_toolbar: false, withdateranges: true, details: false,
+      overrides: { "paneProperties.background": "#000000", "paneProperties.backgroundType": "solid" },
+    }));
+  }
+  const setCw = (k, v) => { cw[k] = v; store.set("term.cw" + k[0].toUpperCase() + k.slice(1), v); loadChart2(); };
+  document.querySelectorAll("#cwIv button").forEach((b) => b.addEventListener("click", () => setCw("iv", b.dataset.iv)));
+  document.querySelectorAll("#cwSt button").forEach((b) => b.addEventListener("click", () => setCw("st", b.dataset.st)));
+  $("cwInd").addEventListener("change", () => setCw("ind", $("cwInd").value));
+
+  let lastNote = null;
+  function renderCwQuote() {
+    if (view !== "chart") return;
+    const o = px.get(symbol) || {}, box = $("cwQuote");
+    const head = el("div", "row");
+    head.append(el("b", "amber", bareTicker(symbol)), el("span", "muted", symbol.includes(":") ? symbol.split(":")[0] : ""));
+    const big = el("div", "big", isNum(o.price) ? fmt(o.price) : "—");
+    const row = el("div", "row");
+    if (isNum(o.price) && isNum(o.prev)) { const d = o.price - o.prev; row.append(el("span", signCls(d), `${d >= 0 ? "+" : ""}${fmt(d)} (${fmtPct((d / o.prev) * 100)})`)); }
+    const f = freshness(symbol);
+    if (f) { const t = el("span", "fresh " + f.cls, f.txt); t.title = f.tip; row.append(t); }
+    const parts = [head, big, row];
+    if (!isNum(o.price)) parts.push(el("span", "muted", $("liveSrc").textContent || ""));
+    if (lastNote && lastNote.sym === symbol) {
+      const sc = el("div", "row");
+      sc.append(el("span", "muted", "Score"), el("b", lastNote.cls, `${Math.round(lastNote.score)}/100 ${lastNote.lbl}`));
+      parts.push(sc);
+    }
+    box.replaceChildren(...parts);
+  }
+
+  // ───────────────────────── Settings window and welcome ─────────────────────────
+  function fillSettings() {
+    const fh = !!finnhubKey(), ai = !!store.get("term.anthropic");
+    $("setFhState").textContent = fh ? "● saved" : "not set";
+    $("setFhState").className = fh ? "up" : "muted";
+    $("setFhBtn").textContent = fh ? "REMOVE" : "SAVE";
+    $("setFh").placeholder = fh ? "key saved" : "paste your Finnhub key";
+    $("setAiState").textContent = ai ? "● saved" : "not set";
+    $("setAiState").className = ai ? "up" : "muted";
+    $("setAiBtn").textContent = ai ? "REMOVE" : "SAVE";
+    $("setAi").placeholder = ai ? "key saved" : "sk-ant-…";
+    const t = el("table");
+    for (const sr of Object.values(SRC)) {
+      const tr = el("tr");
+      const d = el("td"); d.append(el("span", "dot " + sr.state));
+      tr.append(d, el("td", "amber", sr.name), el("td", "muted", sr.msg));
+      t.append(tr);
+    }
+    $("setSrcs").replaceChildren(t);
+    $("setInstall").hidden = $("installBtn").hidden;
+  }
+  function openSettings() { fillSettings(); $("settings").hidden = false; $("setFh").focus(); }
+  function closeSettings() { $("settings").hidden = true; }
+  $("gearBtn").addEventListener("click", openSettings);
+  $("setClose").addEventListener("click", closeSettings);
+  $("settings").addEventListener("click", (e) => { if (e.target.id === "settings") closeSettings(); });
+  $("setFhBtn").addEventListener("click", () => {
+    if (!finnhubKey()) { if (!$("setFh").value.trim()) return $("setFh").focus(); $("keyInput").value = $("setFh").value.trim(); }
+    $("setFh").value = "";
+    $("keySave").click();
+    wsSync();
+    renderLists();
+    fillSettings();
+    toast("Settings", finnhubKey() ? "Finnhub key saved. Stock prices and research are on." : "Finnhub key removed.");
+  });
+  $("setAiBtn").addEventListener("click", () => {
+    if (!store.get("term.anthropic")) { if (!$("setAi").value.trim()) return $("setAi").focus(); $("aiKey").value = $("setAi").value.trim(); }
+    $("setAi").value = "";
+    $("aiKeySave").click();
+    fillSettings();
+    toast("Settings", store.get("term.anthropic") ? "Anthropic key saved. The AI analyst is ready." : "Anthropic key removed.");
+  });
+  ["setFh", "setAi"].forEach((id) => $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") $(id + "Btn").click(); }));
+  $("setBackup").addEventListener("click", () => $("bkSave").click());
+  $("setRestore").addEventListener("click", () => $("bkLoad").click());
+  $("setInstall").addEventListener("click", () => $("installBtn").click());
+
+  if (!store.get("term.welcomed")) $("welcome").hidden = false;
+  const dismissWelcome = () => { $("welcome").hidden = true; store.set("term.welcomed", "1"); };
+  $("wcClose").addEventListener("click", dismissWelcome);
+  $("wcSettings").addEventListener("click", () => { dismissWelcome(); openSettings(); });
+  $("wcCharts").addEventListener("click", () => { dismissWelcome(); showView("chart"); });
+
+  function quoteDirtyFlag() { quoteDirty = true; }
+  setListTab(listTab);
+
   // Hooks into symbol changes and views.
   function afterSymbol() {
+    lastNote = null;
     renderLive();
+    renderCwQuote();
+    renderLists();
+    if (view === "chart") loadChart2();
     $("liveCheck").textContent = "";
     setTimeout(crossCheck, 2000);
     loadNote();
@@ -2391,6 +2741,8 @@
     if (v === "port") { renderPort(); refreshPrices(true); }
     if (v === "tools") { renderAlerts(); calc(); }
     if (v === "jrnl") { renderJournal(); refreshPrices(true); }
+    if (v === "chart") { loadChart2(); renderCwQuote(); renderLists(); }
+    if (v === "main") renderLists();
   }
 
   syncKeyUI();
