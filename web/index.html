@@ -220,6 +220,14 @@
   .statusbox { position: fixed; top: 52px; right: 12px; z-index: 15; background: #0a0a0a; border: 1px solid var(--amber); padding: 10px 12px; max-width: min(420px, calc(100vw - 24px)); }
   .statusbox table td { padding: 2px 8px 2px 0; vertical-align: top; }
 
+  /* Trade journal */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+  .tile { background: var(--panel); padding: 6px 10px; }
+  .tile .muted { font-size: 10px; letter-spacing: .06em; }
+  .tile .v { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .rulebar { background: var(--down); color: #000; font-weight: 700; padding: 6px 10px; }
+  .rulebar.soft, .offline.soft { background: var(--amber); }
+
   /* Toasts and install button */
   .toasts { position: fixed; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 20; max-width: min(360px, calc(100vw - 24px)); }
   .toast { background: #0a0a0a; border: 1px solid var(--amber); padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.6); }
@@ -262,6 +270,7 @@
   <button class="install" id="installBtn" type="button" hidden>⤓ INSTALL APP</button>
 </header>
 
+<div class="offline" id="ruleBanner" hidden></div>
 <div class="offline" id="offline" hidden>OFFLINE: prices, alerts and charts are frozen until the connection comes back.</div>
 <div class="statusbox" id="statusBox" hidden></div>
 <nav class="fkeys">
@@ -272,6 +281,7 @@
   <button data-cmd="RES" data-view="res">RES · RESEARCH</button>
   <button data-cmd="PORT" data-view="port">PORT · PORTFOLIO</button>
   <button data-cmd="ALRT" data-view="tools">ALRT · ALERTS &amp; RISK</button>
+  <button data-cmd="JRNL" data-view="jrnl">JRNL · JOURNAL</button>
   <button data-cmd="AI" data-view="ai">AI · ANALYST</button>
   <span class="sep"></span>
   <button data-cmd="N">N · NEWS</button>
@@ -441,6 +451,65 @@
   </div>
 </section>
 
+<section class="view" id="v-jrnl">
+  <div class="full">
+    <div class="subtabs" id="jrTabs">
+      <span class="title">JRNL · TRADE JOURNAL</span>
+      <button data-per="today">TODAY</button>
+      <button data-per="week">THIS WEEK</button>
+      <button data-per="month">THIS MONTH</button>
+      <button data-per="all" class="on">ALL</button>
+      <span style="margin-left:auto;display:flex;gap:4px;flex-wrap:wrap">
+        <button type="button" id="jrAi">AI REVIEW</button>
+        <button type="button" id="jrCsv">EXPORT CSV</button>
+        <button type="button" id="bkSave">BACKUP ALL</button>
+        <button type="button" id="bkLoad">RESTORE</button>
+        <input type="file" id="bkFile" accept="application/json,.json" hidden>
+      </span>
+    </div>
+    <div class="rulebar" id="ruleBar" hidden></div>
+    <div class="tiles" id="jrTiles"></div>
+    <div class="cols" style="grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);">
+      <section class="panel">
+        <h2>NEW TRADE <small>or type LOG LONG NVDA 10 @ 130 STOP 125 TARGET 145</small></h2>
+        <form class="form" id="jrForm" autocomplete="off">
+          <label>Side<select id="jrSide"><option value="long">Long</option><option value="short">Short</option></select></label>
+          <label>Symbol<input id="jrSym" placeholder="NVDA" required></label>
+          <label>Quantity<input id="jrQty" type="number" step="any" min="0" required></label>
+          <label>Entry<input id="jrEntry" type="number" step="any" min="0" required></label>
+          <label>Stop<input id="jrStop" type="number" step="any" min="0"></label>
+          <label>Target<input id="jrTarget" type="number" step="any" min="0"></label>
+          <label>Setup<input id="jrSetup" placeholder="breakout" list="jrSetups"></label>
+          <label style="flex:1 1 200px">Why I'm taking it<input id="jrNotes" style="width:100%" placeholder="Broke prior-day high on 2× volume"></label>
+          <button type="submit">LOG TRADE</button>
+          <datalist id="jrSetups"></datalist>
+        </form>
+        <div class="scroll">
+          <div class="amber" style="font-weight:700;margin-bottom:4px">OPEN TRADES</div>
+          <div id="jrOpen"></div>
+          <div class="amber" style="font-weight:700;margin:12px 0 4px">CLOSED TRADES</div>
+          <div id="jrClosed"></div>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>EQUITY CURVE &amp; BREAKDOWN</h2>
+        <div class="scroll">
+          <canvas id="jrCurve" style="width:100%;height:200px;display:block" aria-label="Cumulative profit and loss of closed trades"></canvas>
+          <div id="jrBreak"></div>
+          <div class="amber" style="font-weight:700;margin:14px 0 6px">RISK RULES</div>
+          <form class="calc" id="ruleForm" autocomplete="off" onsubmit="return false" style="padding:0">
+            <label for="rlAcct">Account size ($)</label><input id="rlAcct" type="number" step="any" min="0">
+            <label for="rlDaily">Daily loss limit ($)</label><input id="rlDaily" type="number" step="any" min="0" placeholder="e.g. 300">
+            <label for="rlRisk">Max risk per trade (%)</label><input id="rlRisk" type="number" step="any" min="0" placeholder="e.g. 1">
+            <label for="rlTrades">Max trades per day</label><input id="rlTrades" type="number" step="1" min="0" placeholder="e.g. 5">
+          </form>
+          <p class="fine">Breaking a rule shows a red banner across the terminal. Rules only warn; they can't block a trade at your broker.</p>
+        </div>
+      </section>
+    </div>
+  </div>
+</section>
+
 <section class="view" id="v-ai">
   <div class="full">
     <div class="subtabs">
@@ -516,6 +585,7 @@
       <tr><td>RES</td><td>Earnings calendar, analyst ratings, insider trades</td></tr>
       <tr><td>PORT · BUY AAPL 10 @ 180 · SELL AAPL 5</td><td>Portfolio with live profit and loss</td></tr>
       <tr><td>ALERT BTCUSD &gt; 70000</td><td>Price alert (notification, sound, optional AI explanation)</td></tr>
+      <tr><td>JRNL · LOG LONG NVDA 10 @ 130 STOP 125 TARGET 145 · CLOSE NVDA @ 140</td><td>Trade journal with stats, equity curve, risk rules, CSV export and full backup</td></tr>
       <tr><td>ALRT · CALC</td><td>Alerts list and position-size calculator</td></tr>
       <tr><td>/</td><td>Focus the command line</td></tr>
       <tr><td>Esc</td><td>Close this help</td></tr>
@@ -787,6 +857,22 @@
     }
     if (["RES", "ERN", "ANR", "INS", "EE"].includes(c)) return showView("res");
     if (["PORT", "PF", "PORTFOLIO"].includes(c)) return showView("port");
+    if (["JRNL", "JOURNAL", "LOG", "TRADES"].includes(c)) return showView("jrnl");
+    if ((m = c.match(/^LOG (LONG|SHORT|BUY|SELL) (\S+) ([\d.]+) ?(?:@|AT) ?([\d.]+)(?: STOP ([\d.]+))?(?: (?:TARGET|TP) ([\d.]+))?$/))) {
+      const sym = normalize(m[2]), side = /LONG|BUY/.test(m[1]) ? "long" : "short", entry = +m[4], stop = m[5] ? +m[5] : NaN;
+      if (isNum(stop) && (side === "long" ? stop >= entry : stop <= entry)) return toast("Journal", `For a ${side}, the stop goes ${side === "long" ? "below" : "above"} the entry.`);
+      logTrade({ sym, side, qty: +m[3], entry, stop, target: m[6] ? +m[6] : NaN, setup: "", notes: "" });
+      return showView("jrnl");
+    }
+    if ((m = c.match(/^CLOSE (\S+)(?: ?(?:@|AT) ?([\d.]+))?$/))) {
+      const sym = normalize(m[1]);
+      const t = journal.find((x) => !isNum(x.exit) && bareTicker(x.sym) === bareTicker(sym));
+      if (!t) return toast("Journal", `No open trade in ${bareTicker(sym)}.`);
+      const exit = m[2] ? +m[2] : px.get(t.sym)?.price;
+      if (!isNum(exit)) return toast("Journal", `No live price for ${bareTicker(sym)}. Add the price: CLOSE ${bareTicker(sym)} @ 140`);
+      closeTrade(t.id, exit);
+      return showView("jrnl");
+    }
     if ((m = c.match(/^BUY (\S+) ([\d.]+)(?: ?(?:@|AT) ?([\d.]+))?$/))) {
       const sym = normalize(m[1]), qty = +m[2];
       const price = m[3] ? +m[3] : px.get(sym)?.price;
@@ -1186,6 +1272,7 @@
     t.append(el("b", "", title));
     if (body) t.append(el("div", "", body));
     $("toasts").append(t);
+    while ($("toasts").children.length > 4) $("toasts").firstElementChild.remove();
     setTimeout(() => t.remove(), kind === "alert" ? 15000 : 5000);
   }
 
@@ -1238,6 +1325,7 @@
     const s = new Set([symbol]);
     alerts.forEach((a) => { if (!a.fired) s.add(a.sym); });
     portfolio.forEach((p) => s.add(p.sym));
+    if (typeof journal !== "undefined") journal.forEach((t) => { if (!isNum(t.exit)) s.add(t.sym); });
     return [...s];
   }
   function setPx(tv, price, prev, live, ts) {
@@ -1655,7 +1743,9 @@
     toast("Portfolio", `Sold ${q} ${bareTicker(sym)}`);
   }
   let portTimer = null;
-  function schedulePort() { if (view === "port" && !portTimer) portTimer = setTimeout(() => { portTimer = null; renderPort(); }, 400); }
+  function schedulePort() {
+    if ((view === "port" || view === "jrnl") && !portTimer) portTimer = setTimeout(() => { portTimer = null; view === "jrnl" ? renderJournal() : renderPort(); }, 400);
+  }
   function renderPort() {
     if (!portfolio.length) {
       msgIn("portBody", "No positions yet. Add one above, or type BUY AAPL 10 @ 180 in the command line. Prices: crypto from Binance (no key), US stocks from Finnhub (free key).");
@@ -2014,6 +2104,277 @@
   $("offline").hidden = navigator.onLine;
   renderSrcs();
 
+  // ───────────────────────── Trade journal, risk rules, backup ─────────────────────────
+  let journal = loadJSON("term.journal", []);
+  let rules = loadJSON("term.rules", {});
+  let jrPer = "all";
+  const saveJournal = () => { saveJSON("term.journal", journal); refreshPrices(true); renderJournal(); checkRules(); };
+  const dir = (t) => (t.side === "short" ? -1 : 1);
+  const tradePnl = (t, exit) => (exit - t.entry) * t.qty * dir(t) - (t.fees || 0);
+  const tradeR = (t, exit) => (isNum(t.stop) && t.stop > 0 && t.stop !== t.entry ? ((exit - t.entry) * dir(t)) / Math.abs(t.entry - t.stop) : NaN);
+  const dayKey = (iso) => ymd(new Date(iso));
+  function inPeriod(iso, per) {
+    if (per === "all") return true;
+    const d = new Date(iso), now = new Date();
+    if (per === "today") return d.toDateString() === now.toDateString();
+    if (per === "month") return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    const start = new Date(now); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); // Monday
+    return d >= start;
+  }
+  function accountSize() { return +rules.acct || +$("cAcct").value || 0; }
+
+  function logTrade(t) {
+    const risk = isNum(t.stop) && t.stop > 0 ? Math.abs(t.entry - t.stop) * t.qty : NaN;
+    const acct = accountSize();
+    if (isNum(risk) && acct > 0 && +rules.risk > 0 && risk > (acct * rules.risk) / 100) {
+      toast("Risk rule broken", `This trade risks ${fmtUsd(risk)} (${((risk / acct) * 100).toFixed(1)}% of the account). Your limit is ${rules.risk}%.`, "alert");
+    }
+    if (!isNum(t.stop) || !(t.stop > 0)) toast("No stop-loss", "Logged without a stop. R-multiples need one, and so does your risk.");
+    journal.push({ id: Date.now() + Math.random(), opened: new Date().toISOString(), fees: 0, ...t });
+    saveJournal();
+    toast("Trade logged", `${t.side.toUpperCase()} ${t.qty} ${bareTicker(t.sym)} @ ${fmt(t.entry)}`);
+  }
+  function closeTrade(id, exit) {
+    const t = journal.find((x) => x.id === id);
+    if (!t || !(exit > 0)) return toast("Journal", "Enter an exit price above zero.");
+    t.exit = exit;
+    t.closed = new Date().toISOString();
+    saveJournal();
+    const pnl = tradePnl(t, exit), r = tradeR(t, exit);
+    toast("Trade closed", `${bareTicker(t.sym)} ${fmtUsd(pnl)}${isNum(r) ? ` (${r >= 0 ? "+" : ""}${r.toFixed(2)}R)` : ""}`);
+  }
+
+  function stats(closed) {
+    const pnls = closed.map((t) => tradePnl(t, t.exit));
+    const wins = pnls.filter((x) => x > 0), losses = pnls.filter((x) => x < 0);
+    const sum = (a) => a.reduce((x, y) => x + y, 0);
+    const rs = closed.map((t) => tradeR(t, t.exit)).filter(isNum);
+    let peak = 0, eq = 0, dd = 0;
+    for (const p of pnls) { eq += p; peak = Math.max(peak, eq); dd = Math.min(dd, eq - peak); }
+    return {
+      n: closed.length, net: sum(pnls), winRate: closed.length ? (wins.length / closed.length) * 100 : NaN,
+      avgWin: wins.length ? sum(wins) / wins.length : NaN, avgLoss: losses.length ? sum(losses) / losses.length : NaN,
+      pf: losses.length ? sum(wins) / Math.abs(sum(losses)) : wins.length ? Infinity : NaN,
+      expectancy: closed.length ? sum(pnls) / closed.length : NaN, avgR: rs.length ? sum(rs) / rs.length : NaN, maxDD: dd,
+    };
+  }
+
+  function renderJournal() {
+    document.querySelectorAll("#jrTabs button[data-per]").forEach((b) => b.classList.toggle("on", b.dataset.per === jrPer));
+    $("jrSetups").replaceChildren(...[...new Set(journal.map((t) => t.setup).filter(Boolean))].map((s) => { const o = el("option"); o.value = s; return o; }));
+    const closed = journal.filter((t) => isNum(t.exit) && inPeriod(t.closed, jrPer)).sort((a, b) => a.closed.localeCompare(b.closed));
+    const open = journal.filter((t) => !isNum(t.exit));
+    const s = stats(closed);
+
+    // Tiles
+    const tile = (label, value, cls, tip) => { const d = el("div", "tile"); d.title = tip || ""; d.append(el("div", "muted", label), el("div", "v " + (cls || ""), value)); return d; };
+    $("jrTiles").replaceChildren(
+      tile("NET P&L", fmtUsd(s.net), signCls(s.net)),
+      tile("TRADES", String(s.n)),
+      tile("WIN RATE", isNum(s.winRate) ? s.winRate.toFixed(0) + "%" : "—"),
+      tile("PROFIT FACTOR", s.pf === Infinity ? "∞" : isNum(s.pf) ? s.pf.toFixed(2) : "—", isNum(s.pf) ? (s.pf >= 1 ? "up" : "down") : "", "Gross profit ÷ gross loss. Above 1 means the wins outweigh the losses."),
+      tile("AVG WIN", fmtUsd(s.avgWin), isNum(s.avgWin) ? "up" : ""),
+      tile("AVG LOSS", fmtUsd(s.avgLoss), isNum(s.avgLoss) ? "down" : ""),
+      tile("EXPECTANCY", fmtUsd(s.expectancy), signCls(s.expectancy), "Average profit or loss per trade."),
+      tile("AVG R", isNum(s.avgR) ? (s.avgR >= 0 ? "+" : "") + s.avgR.toFixed(2) + "R" : "—", signCls(s.avgR), "Average result in units of the risk you planned (entry to stop)."),
+      tile("MAX DRAWDOWN", fmtUsd(s.maxDD), s.maxDD < 0 ? "down" : "", "Largest fall from a peak in cumulative P&L."),
+    );
+
+    // Open trades with live P&L and a close control
+    if (!open.length) msgIn("jrOpen", "No open trades.");
+    else {
+      const t = el("table", "t");
+      const hr = el("tr");
+      [["SYMBOL"], ["SIDE"], ["QTY", 1], ["ENTRY", 1], ["STOP", 1], ["LAST", 1], ["DATA"], ["P&L", 1], ["R", 1], ["CLOSE AT"]].forEach(([h, r]) => hr.append(th(h, r)));
+      t.append(hr);
+      for (const x of open) {
+        const last = px.get(x.sym)?.price;
+        const pnl = isNum(last) ? tradePnl(x, last) : NaN, r = isNum(last) ? tradeR(x, last) : NaN;
+        const tr = el("tr");
+        const inp = el("input");
+        inp.type = "number"; inp.step = "any"; inp.style.width = "90px";
+        inp.placeholder = isNum(last) ? String(last) : "exit";
+        inp.setAttribute("aria-label", "Exit price for " + bareTicker(x.sym));
+        const btn = el("button", "tbtn", "CLOSE");
+        btn.type = "button";
+        btn.addEventListener("click", () => {
+          const v = inp.value ? +inp.value : last;
+          if (!inp.value) { const f = freshness(x.sym); if (f && f.cls !== "up") toast("Check the exit price", `Using a ${f.txt.toLowerCase()} price. Type your real fill instead if it differs.`); }
+          closeTrade(x.id, v);
+        });
+        const del = el("button", "x", "✕");
+        del.type = "button"; del.title = "Delete without closing";
+        del.addEventListener("click", () => { journal = journal.filter((y) => y.id !== x.id); saveJournal(); });
+        const cc = el("td"); cc.append(inp, " ", btn, del);
+        const sym = td(bareTicker(x.sym), "amber"); sym.style.cursor = "pointer"; sym.addEventListener("click", () => run(x.sym));
+        tr.append(sym, td(x.side.toUpperCase(), x.side === "long" ? "up" : "down"), td(String(x.qty), "r"), td(fmt(x.entry), "r"), td(isNum(x.stop) ? fmt(x.stop) : "—", "r"),
+          td(isNum(last) ? fmt(last) : "—", "r"), freshCell(x.sym), td(fmtUsd(pnl), "r " + signCls(pnl)), td(isNum(r) ? r.toFixed(2) + "R" : "—", "r " + signCls(r)), cc);
+        t.append(tr);
+        if (x.notes) { const n = el("tr"); const c = td("↳ " + x.notes, "muted"); c.colSpan = 10; c.className = "muted wrap"; n.append(c); t.append(n); }
+      }
+      $("jrOpen").replaceChildren(t);
+    }
+
+    // Closed trades, newest first
+    if (!closed.length) msgIn("jrClosed", jrPer === "all" ? "No closed trades yet. Log a trade, then close it to see your stats." : "No trades closed in this period.");
+    else {
+      const t = el("table", "t");
+      const hr = el("tr");
+      [["CLOSED"], ["SYMBOL"], ["SIDE"], ["QTY", 1], ["ENTRY", 1], ["EXIT", 1], ["P&L", 1], ["R", 1], ["SETUP"], ["NOTES"], [""]].forEach(([h, r]) => hr.append(th(h, r)));
+      t.append(hr);
+      [...closed].reverse().slice(0, 300).forEach((x) => {
+        const pnl = tradePnl(x, x.exit), r = tradeR(x, x.exit);
+        const del = el("button", "x", "✕");
+        del.type = "button"; del.title = "Delete trade";
+        del.addEventListener("click", () => { journal = journal.filter((y) => y.id !== x.id); saveJournal(); });
+        const dc = el("td"); dc.append(del);
+        const tr = el("tr");
+        tr.append(td(new Date(x.closed).toLocaleDateString([], { month: "short", day: "numeric" })), td(bareTicker(x.sym), "amber"), td(x.side.toUpperCase(), x.side === "long" ? "up" : "down"),
+          td(String(x.qty), "r"), td(fmt(x.entry), "r"), td(fmt(x.exit), "r"), td(fmtUsd(pnl), "r " + signCls(pnl)), td(isNum(r) ? r.toFixed(2) + "R" : "—", "r " + signCls(r)),
+          td(x.setup || "—"), td(x.notes || "", "wrap muted"), dc);
+        t.append(tr);
+      });
+      $("jrClosed").replaceChildren(t);
+    }
+
+    // Breakdown by setup and by symbol
+    const group = (key) => {
+      const m = new Map();
+      for (const x of closed) { const k = key(x) || "(none)"; const a = m.get(k) || []; a.push(x); m.set(k, a); }
+      return [...m].map(([k, a]) => [k, stats(a)]).sort((a, b) => b[1].net - a[1].net);
+    };
+    const table = (title, rows) => {
+      const t = el("table", "t");
+      const hr = el("tr");
+      [[title], ["TRADES", 1], ["WIN %", 1], ["NET", 1], ["AVG R", 1]].forEach(([h, r]) => hr.append(th(h, r)));
+      t.append(hr);
+      rows.forEach(([k, st]) => { const tr = el("tr"); tr.append(td(k), td(String(st.n), "r"), td(st.winRate.toFixed(0) + "%", "r"), td(fmtUsd(st.net), "r " + signCls(st.net)), td(isNum(st.avgR) ? st.avgR.toFixed(2) + "R" : "—", "r " + signCls(st.avgR))); t.append(tr); });
+      t.style.marginTop = "10px";
+      return t;
+    };
+    $("jrBreak").replaceChildren(...(closed.length ? [table("SETUP", group((x) => x.setup)), table("SYMBOL", group((x) => bareTicker(x.sym)))] : []));
+    drawCurve(closed);
+    ["acct", "daily", "risk", "trades"].forEach((k) => { const i = $("rl" + k[0].toUpperCase() + k.slice(1)); if (document.activeElement !== i) i.value = rules[k] ?? (k === "acct" ? $("cAcct").value : ""); });
+  }
+
+  function drawCurve(closed) {
+    const cv = $("jrCurve"), dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth || 400, h = cv.clientHeight || 200;
+    cv.width = w * dpr; cv.height = h * dpr;
+    const g = cv.getContext("2d");
+    g.scale(dpr, dpr);
+    g.clearRect(0, 0, w, h);
+    g.font = "11px monospace";
+    if (closed.length < 2) { g.fillStyle = "#8c8c8c"; g.fillText("The equity curve appears after two closed trades.", 8, h / 2); return; }
+    let eq = 0;
+    const pts = [0, ...closed.map((t) => (eq += tradePnl(t, t.exit)))];
+    const lo = Math.min(0, ...pts), hi = Math.max(0, ...pts), span = hi - lo || 1;
+    const padL = 64, padR = 8, padT = 10, padB = 18;
+    const x = (i) => padL + (i / (pts.length - 1)) * (w - padL - padR);
+    const y = (v) => padT + (1 - (v - lo) / span) * (h - padT - padB);
+    // grid + labels
+    g.strokeStyle = "#262626"; g.fillStyle = "#8c8c8c"; g.lineWidth = 1;
+    [lo, (lo + hi) / 2, hi].forEach((v) => { g.beginPath(); g.moveTo(padL, y(v)); g.lineTo(w - padR, y(v)); g.stroke(); g.fillText(fmtUsd(v).replace(".00", ""), 2, y(v) + 4); });
+    g.strokeStyle = "#555"; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(padL, y(0)); g.lineTo(w - padR, y(0)); g.stroke(); g.setLineDash([]);
+    g.fillText("trade 1", padL, h - 4); g.fillText(`trade ${pts.length - 1}`, w - padR - 60, h - 4);
+    // area + line
+    const up = pts.at(-1) >= 0;
+    g.beginPath(); pts.forEach((v, i) => (i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v))));
+    g.lineTo(x(pts.length - 1), y(0)); g.lineTo(x(0), y(0)); g.closePath();
+    g.fillStyle = up ? "rgba(74,246,38,0.12)" : "rgba(255,67,61,0.12)"; g.fill();
+    g.beginPath(); pts.forEach((v, i) => (i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v))));
+    g.strokeStyle = up ? "#4af626" : "#ff433d"; g.lineWidth = 1.5; g.stroke();
+    g.fillStyle = g.strokeStyle; g.beginPath(); g.arc(x(pts.length - 1), y(pts.at(-1)), 3, 0, Math.PI * 2); g.fill();
+  }
+
+  // Risk rules: daily loss limit and trade count, checked on every change and every 30 s.
+  function checkRules() {
+    const today = ymd(new Date());
+    const closedToday = journal.filter((t) => isNum(t.exit) && dayKey(t.closed) === today);
+    const realized = closedToday.reduce((a, t) => a + tradePnl(t, t.exit), 0);
+    const openPnl = journal.filter((t) => !isNum(t.exit)).reduce((a, t) => { const p = px.get(t.sym)?.price; return a + (isNum(p) ? tradePnl(t, p) : 0); }, 0);
+    const opened = journal.filter((t) => dayKey(t.opened) === today).length;
+    const msgs = [];
+    if (+rules.daily > 0 && realized + Math.min(0, openPnl) <= -rules.daily) msgs.push(`DAILY LOSS LIMIT HIT: ${fmtUsd(realized)} realised${openPnl < 0 ? `, ${fmtUsd(openPnl)} open` : ""} vs your ${fmtUsd(-rules.daily)} limit. Stop trading for today.`);
+    else if (+rules.daily > 0 && realized + Math.min(0, openPnl) <= -0.75 * rules.daily) msgs.push(`Near your daily loss limit: ${fmtUsd(realized + Math.min(0, openPnl))} of ${fmtUsd(-rules.daily)}.`);
+    if (+rules.trades > 0 && opened >= rules.trades) msgs.push(`Trade limit reached: ${opened} of ${rules.trades} trades today.`);
+    const hard = msgs.some((m) => /HIT|reached/.test(m));
+    for (const id of ["ruleBar", "ruleBanner"]) {
+      const b = $(id);
+      b.hidden = !msgs.length;
+      b.textContent = msgs.join("  ·  ");
+      b.className = (id === "ruleBar" ? "rulebar" : "offline") + (hard ? "" : " soft");
+    }
+  }
+  ["Acct", "Daily", "Risk", "Trades"].forEach((k) => $("rl" + k).addEventListener("input", () => {
+    rules[k.toLowerCase()] = $("rl" + k).value === "" ? undefined : +$("rl" + k).value;
+    saveJSON("term.rules", rules);
+    checkRules();
+  }));
+  setInterval(() => { checkRules(); if (view === "jrnl") renderJournal(); }, 30_000);
+
+  $("jrForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const sym = normalize($("jrSym").value), qty = +$("jrQty").value, entry = +$("jrEntry").value;
+    if (!sym || !(qty > 0) || !(entry > 0)) return toast("Journal", "Enter a symbol, a quantity and an entry price above zero.");
+    const stop = $("jrStop").value ? +$("jrStop").value : NaN, target = $("jrTarget").value ? +$("jrTarget").value : NaN;
+    const side = $("jrSide").value;
+    if (isNum(stop) && (side === "long" ? stop >= entry : stop <= entry)) return toast("Journal", `For a ${side}, the stop goes ${side === "long" ? "below" : "above"} the entry.`);
+    logTrade({ sym, side, qty, entry, stop, target, setup: $("jrSetup").value.trim(), notes: $("jrNotes").value.trim() });
+    $("jrForm").reset();
+  });
+  document.querySelectorAll("#jrTabs button[data-per]").forEach((b) => b.addEventListener("click", () => { jrPer = b.dataset.per; renderJournal(); }));
+
+  // CSV export and full backup/restore of everything this browser stores.
+  function download(name, text, type) {
+    const a = el("a");
+    a.href = URL.createObjectURL(new Blob([text], { type }));
+    a.download = name;
+    document.body.append(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  $("jrCsv").addEventListener("click", () => {
+    const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const head = ["opened", "closed", "symbol", "side", "qty", "entry", "stop", "target", "exit", "pnl", "r", "setup", "notes"];
+    const lines = journal.map((t) => [t.opened, t.closed || "", t.sym, t.side, t.qty, t.entry, t.stop ?? "", t.target ?? "", t.exit ?? "",
+      isNum(t.exit) ? tradePnl(t, t.exit).toFixed(2) : "", isNum(t.exit) && isNum(tradeR(t, t.exit)) ? tradeR(t, t.exit).toFixed(2) : "", t.setup || "", t.notes || ""].map(q).join(","));
+    download(`trade-journal-${ymd(new Date())}.csv`, [head.join(","), ...lines].join("\n"), "text/csv");
+  });
+  const BACKUP_KEYS = ["term.watch", "term.alerts", "term.portfolio", "term.journal", "term.rules", "term.cAcct", "term.cRisk", "term.symbol", "term.model", "term.alertAi"];
+  $("bkSave").addEventListener("click", () => {
+    const data = { app: "market-terminal", version: 1, saved: new Date().toISOString(), items: {} };
+    BACKUP_KEYS.forEach((k) => { const v = store.get(k); if (v != null) data.items[k] = v; });
+    download(`terminal-backup-${ymd(new Date())}.json`, JSON.stringify(data, null, 2), "application/json");
+    toast("Backup saved", "Watchlist, alerts, portfolio, journal and settings. API keys are left out on purpose.");
+  });
+  $("bkLoad").addEventListener("click", () => $("bkFile").click());
+  $("bkFile").addEventListener("change", async () => {
+    const f = $("bkFile").files[0];
+    $("bkFile").value = "";
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (data.app !== "market-terminal" || typeof data.items !== "object") throw new Error("This isn't a terminal backup file.");
+      const keys = Object.keys(data.items).filter((k) => BACKUP_KEYS.includes(k));
+      for (const k of keys) { const v = data.items[k]; if (typeof v !== "string") throw new Error("The backup file is damaged."); if (k !== "term.symbol" && k !== "term.model" && k !== "term.alertAi" && !/^\d|^[[{]/.test(v)) throw new Error("The backup file is damaged."); }
+      keys.forEach((k) => store.set(k, data.items[k]));
+      toast("Restored", `${keys.length} items from ${String(data.saved).slice(0, 10)}. Reloading…`);
+      setTimeout(() => location.reload(), 1200);
+    } catch (e) { toast("Restore failed", e.message || "Couldn't read that file."); }
+  });
+
+  $("jrAi").addEventListener("click", () => {
+    const closed = journal.filter((t) => isNum(t.exit) && inPeriod(t.closed, jrPer));
+    if (closed.length < 3) return toast("AI review", "Close at least 3 trades in this period first.");
+    const s = stats(closed);
+    const rows = closed.slice(-40).map((t) => `${t.closed.slice(0, 10)} ${t.side} ${bareTicker(t.sym)} qty ${t.qty} entry ${t.entry} stop ${t.stop ?? "none"} exit ${t.exit} pnl ${tradePnl(t, t.exit).toFixed(2)} R ${isNum(tradeR(t, t.exit)) ? tradeR(t, t.exit).toFixed(2) : "n/a"} setup "${t.setup || ""}" notes "${(t.notes || "").slice(0, 120)}"`);
+    showView("ai");
+    ask(`Review my trading from my journal (${jrPer === "all" ? "all trades" : jrPer}). Stats: ${s.n} trades, net ${s.net.toFixed(2)}, win rate ${s.winRate.toFixed(0)}%, profit factor ${isNum(s.pf) ? s.pf.toFixed(2) : "n/a"}, avg R ${isNum(s.avgR) ? s.avgR.toFixed(2) : "n/a"}, max drawdown ${s.maxDD.toFixed(2)}.\nTrades (oldest first):\n${rows.join("\n")}\n\nTell me: what's working, what's costing me money (setups, symbols, sizing, cutting winners or holding losers, trading without stops), and three specific rules to try next. Don't search the web; use only this data. Be direct and concise.`, `AI REVIEW · ${closed.length} trades`);
+  });
+
+  checkRules();
+
   // Hooks into symbol changes and views.
   function afterSymbol() {
     renderLive();
@@ -2029,6 +2390,7 @@
     if (v === "res") loadRes();
     if (v === "port") { renderPort(); refreshPrices(true); }
     if (v === "tools") { renderAlerts(); calc(); }
+    if (v === "jrnl") { renderJournal(); refreshPrices(true); }
   }
 
   syncKeyUI();

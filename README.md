@@ -40,6 +40,8 @@ A Bloomberg-style page in a single file. Use it at **https://brunokardas-hub.git
 - **Quick AI questions**: one-tap buttons in the AI screen (explain this move, bull vs bear, latest earnings, levels and catalysts, vs sector).
 - **Installable app**: click ⤓ INSTALL APP (Chrome/Edge), or on iPhone use Share → Add to Home Screen. It opens full-screen with its own icon.
 
+- **JRNL (trade journal)**: log trades (`LOG LONG NVDA 10 @ 130 STOP 125 TARGET 145`, or the form, with setup and reasons), close them (`CLOSE NVDA @ 140`, or at the live price), and see net P&L, win rate, profit factor, average win and loss, expectancy, average R, max drawdown, an equity curve, and results by setup and symbol. Risk rules (daily loss limit, max risk per trade, max trades per day) show a red banner across the terminal when broken. EXPORT CSV for spreadsheets; AI REVIEW asks the analyst to critique your trades.
+- **Backup**: BACKUP ALL saves your watchlist, alerts, portfolio, journal and settings to a file (API keys are left out); RESTORE loads it on another device or browser.
 - **Reliability**: lights in the header show each data source's state (TradingView, Binance, Finnhub quotes, Finnhub live feed); every live price carries a LIVE / DELAYED / STALE / CLOSED tag (also in the portfolio and alerts); crypto prices are cross-checked against Coinbase; an offline banner appears when the connection drops; the calculator warns before using a delayed price.
 
 API keys are stored only in your browser and are sent only to their own provider (Finnhub or Anthropic). Don't save them on a shared computer, and set a monthly spend limit in the Claude Console.
