@@ -328,6 +328,7 @@
   .tline.setup { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
   .tline.setup .tbtn { margin: 0 0 0 auto; padding: 1px 8px; }
   .process.compact { grid-template-columns: minmax(0, 1fr); border: 0; }
+  .setupcard { border-color: var(--amber); }
   .mcbox { border: 1px solid var(--line); border-left: 3px solid var(--amber); padding: 8px 10px; margin: 10px 0; display: flex; flex-direction: column; gap: 3px; }
   #btApproved { padding: 6px 8px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 
@@ -887,9 +888,14 @@
   </div>
 </div>
 
+<div class="toasts" id="toasts" aria-live="polite"></div>
 <script>
 (() => {
   "use strict";
+  // Every timer in the terminal runs through this guard: an error inside one is
+  // reported once (see errNote) instead of silently breaking that feature.
+  const setInterval = (fn, ms) => window.setInterval(() => { try { fn(); } catch (e) { errNote("Timer", e); } }, ms);
+  const hidden = () => document.hidden;
 
   const WATCH = [
     { name: "Indices", symbols: [["FOREXCOM:SPXUSD", "S&P 500"], ["FOREXCOM:NSXUSD", "Nasdaq 100"], ["FOREXCOM:DJI", "Dow 30"], ["INDEX:DEU40", "DAX"], ["INDEX:NKY", "Nikkei"]] },
@@ -979,11 +985,21 @@
     });
     // The multi-asset monitor loads when its MARKETS tab is open.
     if (typeof listTab !== "undefined" && listTab === "mkts") embedQuotes(); else quoteDirtyFlag();
+    // The economic calendar lives on MAIN; it loads the first time MAIN is shown.
+    ecoLoaded = false;
+    if (view === "main") loadEco();
+  }
+  let ecoLoaded = false, mainDirty = true;
+  function loadEco() {
+    if (ecoLoaded) return;
+    ecoLoaded = true;
     embed("w-eco", "events", { importanceFilter: "0,1", countryFilter: "us,eu,gb,jp,cn,de,ca,au,ch" });
   }
-
-  function loadSymbol() {
-    document.getElementById("symLabel").textContent = symbol;
+  // MAIN's TradingView panels (overview, chart, technicals, financials, news) load only
+  // when MAIN is on screen, so other screens open fast and use less data.
+  function loadMainWidgets() {
+    mainDirty = false;
+    loadEco();
     embed("w-info", "symbol-info", { symbol });
     embed("w-ta", "technical-analysis", { symbol, interval: "1D", showIntervalTabs: true, displayMode: "single" });
     if (assetClass(symbol) === "stock") {
@@ -996,6 +1012,11 @@
     }
     loadChart();
     loadNews();
+  }
+
+  function loadSymbol() {
+    document.getElementById("symLabel").textContent = symbol;
+    if (view === "main") loadMainWidgets(); else mainDirty = true;
     afterSymbol();
   }
 
@@ -2223,7 +2244,7 @@
   $("notifBtn").addEventListener("click", () => { if ("Notification" in window) Notification.requestPermission().then(renderAlerts); });
   $("alAi").checked = store.get("term.alertAi") === "1";
   $("alAi").addEventListener("change", () => store.set("term.alertAi", $("alAi").checked ? "1" : null));
-  setInterval(() => { if (view === "tools") renderAlerts(); }, 5000);
+  setInterval(() => { if (view === "tools" && !hidden()) renderAlerts(); }, 5000);
 
   // ───────────────────────── Position-size calculator ─────────────────────────
   ["cAcct", "cRisk"].forEach((id) => { const v = store.get("term." + id); if (v) $(id).value = v; });
@@ -2430,7 +2451,7 @@
   }
   window.addEventListener("online", setOnline);
   window.addEventListener("offline", setOnline);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) { refreshPrices(true); renderFresh(); } });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { refreshPrices(true); renderFresh(); safely("Redraw", () => afterView(view)); } });
   $("offline").hidden = navigator.onLine;
   renderSrcs();
 
@@ -2676,7 +2697,7 @@
     saveJSON("term.rules", rules);
     checkRules();
   }));
-  setInterval(() => { checkRules(); if (view === "jrnl") renderJournal(); }, 30_000);
+  setInterval(() => { checkRules(); if (view === "jrnl" && !hidden()) renderJournal(); }, 30_000);
 
   $("jrForm").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -3259,6 +3280,7 @@
   $("flowBig").addEventListener("input", () => { store.set("term.flowBig", $("flowBig").value || null); renderFlow(); });
   $("flowBig").value = store.get("term.flowBig") || "";
   setInterval(() => {
+    if (hidden()) return;
     renderFlowChip();
     if (view === "flow") renderFlow();
   }, 2000);
@@ -3717,7 +3739,7 @@
     toast("ATR stop", `Daily ATR is ${fmt(atr)}. Stop 1.5× ATR away, target 2R. Adjust to real support and resistance.`);
     scheduleCheck();
   });
-  setInterval(() => { if (view === "jrnl" || view === "scan") renderMood(); }, 60_000);
+  setInterval(() => { if ((view === "jrnl" || view === "scan") && !hidden()) renderMood(); }, 60_000);
   setInterval(refreshMood, 5 * 60_000);
   setTimeout(refreshMood, 1500);
   $("moodBtn").addEventListener("click", () => toast("Market mood", `Stocks: ${mood.stocks.detail} Crypto: ${mood.crypto.detail}`));
@@ -3838,7 +3860,7 @@
     store.set("term.scanAlerts", $("scanAlerts").checked ? "1" : null);
     if ($("scanAlerts").checked && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
   });
-  setInterval(() => { if (view === "scan") runScan(true); }, 60_000);
+  setInterval(() => { if (view === "scan" && !hidden()) runScan(true); }, 60_000);
   setInterval(() => { if (view !== "scan" && $("scanAlerts").checked) runScan(true); }, 5 * 60_000);
 
   // ───────────────────────── Smarter exits, paper trading, insights, process ─────────────────────────
@@ -4142,6 +4164,20 @@
       ...(!finnhubKey() ? [line("muted", "Add a free Finnhub key in ⚙ Settings.")] : todayEarn.rows.length ? todayEarn.rows.slice(0, 6).map((e) => line(e.date <= todayPlus(1) ? "down" : "amber", `${e.symbol} · ${e.date}${e.hour === "bmo" ? " before the open" : e.hour === "amc" ? " after the close" : ""}`)) : [line("up", todayEarn.at ? "None of your stocks report in the next 7 days." : "Loading…")]),
       line("fine", "Avoid holding through earnings unless that is the plan.")));
 
+    // 0. Setup checklist, shown until everything important is done
+    const items = setupItems(), missing = items.filter(([ok]) => !ok);
+    if (missing.length) {
+      const list = items.map(([ok, label, go]) => {
+        const d = el("div", "tline setup");
+        d.append(el("span", ok ? "up" : "muted", ok ? "✓" : "○"), " ", el("span", ok ? "muted" : "", label));
+        if (!ok) d.append(" ", actBtn("SET UP", go));
+        return d;
+      });
+      const c = card(`GET SET UP · ${items.length - missing.length} OF ${items.length} DONE`, ...list);
+      c.classList.add("setupcard");
+      cards.unshift(c);
+    }
+
     // 8. Your process + quick actions
     const proc = el("div", "process compact");
     renderProcess(proc);
@@ -4150,7 +4186,7 @@
       (() => { const d = el("div", "acts"); d.append(actBtn("SCAN MY LIST", () => showView("scan")), actBtn("BACKTEST", () => showView("bt")), actBtn("AI MORNING BRIEF", () => run("BRIEF")), actBtn("NEW TRADE", () => showView("jrnl")), actBtn("CHARTS", () => showView("chart"))); return d; })()));
     $("todayGrid").replaceChildren(...cards);
   }
-  setInterval(() => { if (view === "today") renderToday(); }, 15_000);
+  setInterval(() => { if (view === "today" && !hidden()) renderToday(); }, 15_000);
   $("scanTested").checked = store.get("term.scanTested") === "1";
   $("scanTested").addEventListener("change", () => { store.set("term.scanTested", $("scanTested").checked ? "1" : null); renderScan(); });
 
@@ -4172,6 +4208,41 @@
     const btns = [...document.querySelectorAll(".fkeys button[data-view]")];
     if (btns[idx]) { e.preventDefault(); showView(btns[idx].dataset.view); }
   });
+
+  // ───────────────────────── Stability: error shield, background pause, setup, what's new ─────────────────────────
+  // One broken feature shouldn't take the page down: errors become a short note and
+  // the rest keeps running. Notes are rate-limited so a repeating error can't flood.
+  let lastErrNote = 0;
+  function errNote(where, e) {
+    console.error("[terminal]", where, e);
+    if (Date.now() - lastErrNote < 30_000) return;
+    lastErrNote = Date.now();
+    toast("Something went wrong", `${where}: ${String((e && e.message) || e).slice(0, 120)}. Everything else keeps working; reload the page if this part stays broken.`);
+  }
+  function safely(where, fn) { try { return fn(); } catch (e) { errNote(where, e); } }
+  // Only our own code's errors: widget scripts from other sites report a detail-less "Script error.".
+  window.addEventListener("error", (e) => { if (e.error) errNote("Page", e.error); });
+  window.addEventListener("unhandledrejection", (e) => errNote("Background task", e.reason));
+
+  // Setup checklist for the TODAY screen.
+  function setupItems() {
+    return [
+      [!!finnhubKey(), "Free Finnhub key (stock prices, research, news)", () => openSettings()],
+      [myList.length >= 3, `My list has ${myList.length} symbol${myList.length === 1 ? "" : "s"} (add at least 3)`, () => showView("chart")],
+      [+rules.daily > 0 && accountSize() > 0, "Risk rules set (account size and daily loss limit)", () => showView("jrnl")],
+      [!!approved.length, "At least one setup approved in BACKTEST", () => showView("bt")],
+      [alerts.some((a) => !a.fired) || store.get("term.scanAlerts") === "1", "An alert or scanner alerts switched on", () => showView("tools")],
+      [!!store.get("term.anthropic"), "Anthropic key for the AI analyst (optional, pay per use)", () => openSettings()],
+    ];
+  }
+
+  const VERSION = "2026.10.09-b";
+  function whatsNew() {
+    const seen = store.get("term.version");
+    store.set("term.version", VERSION);
+    if (!seen || seen === VERSION) return;
+    toast("Updated", "Faster start (MAIN's widgets load only when you open MAIN), lighter when the tab is hidden, an error shield, and a setup checklist on TODAY.");
+  }
 
   // Hooks into symbol changes and views.
   function afterSymbol() {
@@ -4200,15 +4271,15 @@
     if (v === "today") renderToday();
     if (v === "scan") { renderScan(); if (Date.now() - scanAt > 50_000) runScan(false); }
     if (v === "bt" && !$("btSym").value) $("btSym").value = binSym(symbol) ? bareTicker(symbol) : "BTCUSDT";
-    if (v === "main") renderLists();
+    if (v === "main") { renderLists(); if (mainDirty) loadMainWidgets(); }
   }
 
+  view = store.get("term.view") || "today";
   syncKeyUI();
-  loadStatic();
-  loadSymbol();
-  showView(store.get("term.view") || "today");
+  safely("start-up", () => { loadStatic(); loadSymbol(); });
+  showView(view);
+  whatsNew();
 })();
 </script>
-<div class="toasts" id="toasts" aria-live="polite"></div>
 </body>
 </html>

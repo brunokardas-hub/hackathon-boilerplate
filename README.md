@@ -59,6 +59,8 @@ A Bloomberg-style page in a single file. Use it at **https://brunokardas-hub.git
 - **Backup**: BACKUP ALL saves your watchlist, alerts, portfolio, journal and settings to a file (API keys are left out); RESTORE loads it on another device or browser.
 - **Reliability**: lights in the header show each data source's state (TradingView, Binance, Finnhub quotes, Finnhub live feed); every live price carries a LIVE / DELAYED / STALE / CLOSED tag (also in the portfolio and alerts); crypto prices are cross-checked against Coinbase; an offline banner appears when the connection drops; the calculator warns before using a delayed price.
 
+- **Speed and stability**: MAIN's TradingView panels load only when MAIN is opened; redraws pause while the tab is hidden (prices and alerts keep running); every timer is guarded, so an error in one feature shows a short note instead of breaking the page; TODAY shows a setup checklist until the key pieces are in place; a short note after each update says what changed.
+
 API keys are stored only in your browser and are sent only to their own provider (Finnhub or Anthropic). Don't save them on a shared computer, and set a monthly spend limit in the Claude Console.
 
 The chart is TradingView's embeddable widget, which can't load custom Pine scripts. To use `terminal.pine`, open it on tradingview.com.
