@@ -53,6 +53,12 @@ showMA   = input.bool(true, "Plot EMAs", group = G_OV)
 showVWAP = input.bool(true, "Plot VWAP", group = G_OV)
 showPDHL = input.bool(true, "Plot prior-day high/low (intraday)", group = G_OV)
 
+const string G_AL = "Alerts"
+lvlAbove = input.float(0.0, "Price crosses above (0 = off)", minval = 0, group = G_AL, tooltip = "Your own level. Re-create the TradingView alert after changing it: alerts keep the settings they were created with.")
+lvlBelow = input.float(0.0, "Price crosses below (0 = off)", minval = 0, group = G_AL)
+volMult  = input.float(2.0, "Volume spike: at least × the 20-bar average", minval = 1, step = 0.5, group = G_AL)
+gapPct   = input.float(2.0, "Gap at the open: at least %", minval = 0.1, step = 0.5, group = G_AL)
+
 // ───────────────────────────── Palette ─────────────────────────────
 const color C_BG    = #000000
 const color C_ALT   = #0D0D0D
@@ -215,13 +221,79 @@ plot(showPDHL and timeframe.isintraday ? pdH : na, "Prior-day high", color = col
 plot(showPDHL and timeframe.isintraday ? pdL : na, "Prior-day low", color = color.new(C_DN, 40), style = plot.style_linebr)
 
 // ───────────────────────────── Alerts ─────────────────────────────
-alertcondition(ta.crossover(close, h52[1]), "New 52-week high", "{{ticker}} broke its 52-week high at {{close}}")
-alertcondition(ta.crossunder(close, l52[1]), "New 52-week low", "{{ticker}} broke its 52-week low at {{close}}")
-alertcondition(ta.crossover(rsi, 70), "RSI overbought", "{{ticker}} RSI crossed above 70")
-alertcondition(ta.crossunder(rsi, 30), "RSI oversold", "{{ticker}} RSI crossed below 30")
-alertcondition(ta.cross(ma1, ma2), "EMA fast/mid cross", "{{ticker}} fast/mid EMA cross at {{close}}")
-alertcondition(ta.crossover(score, 70), "Score turned strong", "{{ticker}} terminal score rose above 70")
-alertcondition(ta.crossunder(score, 30), "Score turned weak", "{{ticker}} terminal score fell below 30")
+// Every signal is computed on every bar (outside any condition) so the ta.* history stays correct.
+s52h     = ta.crossover(close, h52[1])
+s52l     = ta.crossunder(close, l52[1])
+sRsiOB   = ta.crossover(rsi, 70)
+sRsiOS   = ta.crossunder(rsi, 30)
+sEma     = ta.cross(ma1, ma2)
+sStrong  = ta.crossover(score, 70)
+sWeak    = ta.crossunder(score, 30)
+xUp      = ta.crossover(close, lvlAbove)
+xDn      = ta.crossunder(close, lvlBelow)
+sAbove   = lvlAbove > 0 and xUp
+sBelow   = lvlBelow > 0 and xDn
+volAvg20 = ta.sma(volume, 20)
+sVol     = not na(volAvg20) and volAvg20 > 0 and volume >= volMult * volAvg20
+dayStart = ta.change(time("D")) != 0
+newDay   = timeframe.isintraday ? dayStart : true
+gapOpen  = newDay ? f_ret(open, dPC) : na
+sGapUp   = not na(gapOpen) and gapOpen >= gapPct
+sGapDn   = not na(gapOpen) and gapOpen <= -gapPct
+pdhX     = ta.crossover(close, pdH)
+pdlX     = ta.crossunder(close, pdL)
+sPdh     = timeframe.isintraday and pdhX
+sPdl     = timeframe.isintraday and pdlX
+
+alertcondition(s52h, "New 52-week high", "{{ticker}} broke its 52-week high at {{close}}")
+alertcondition(s52l, "New 52-week low", "{{ticker}} broke its 52-week low at {{close}}")
+alertcondition(sRsiOB, "RSI overbought", "{{ticker}} RSI crossed above 70")
+alertcondition(sRsiOS, "RSI oversold", "{{ticker}} RSI crossed below 30")
+alertcondition(sEma, "EMA fast/mid cross", "{{ticker}} fast/mid EMA cross at {{close}}")
+alertcondition(sStrong, "Score turned strong", "{{ticker}} terminal score rose above 70")
+alertcondition(sWeak, "Score turned weak", "{{ticker}} terminal score fell below 30")
+alertcondition(sAbove, "Price above my level", "{{ticker}} crossed above your level, now {{close}}")
+alertcondition(sBelow, "Price below my level", "{{ticker}} crossed below your level, now {{close}}")
+alertcondition(sVol, "Volume spike", "{{ticker}} volume is unusually high ({{volume}}) at {{close}}")
+alertcondition(sGapUp, "Gap up at the open", "{{ticker}} gapped up at the open to {{open}}")
+alertcondition(sGapDn, "Gap down at the open", "{{ticker}} gapped down at the open to {{open}}")
+alertcondition(sPdh, "Broke prior-day high", "{{ticker}} broke the prior day's high, now {{close}}")
+alertcondition(sPdl, "Broke prior-day low", "{{ticker}} broke the prior day's low, now {{close}}")
+
+// One alert for everything: in TradingView pick the condition "Any alert() function call".
+// It fires once when a bar closes, listing every signal on that bar.
+if barstate.isconfirmed
+    sigs = array.new_string()
+    if s52h
+        array.push(sigs, "new 52-week high")
+    if s52l
+        array.push(sigs, "new 52-week low")
+    if sAbove
+        array.push(sigs, "crossed above " + str.tostring(lvlAbove))
+    if sBelow
+        array.push(sigs, "crossed below " + str.tostring(lvlBelow))
+    if sPdh
+        array.push(sigs, "broke prior-day high")
+    if sPdl
+        array.push(sigs, "broke prior-day low")
+    if sGapUp
+        array.push(sigs, "gap up " + str.tostring(gapOpen, "0.0") + "%")
+    if sGapDn
+        array.push(sigs, "gap down " + str.tostring(gapOpen, "0.0") + "%")
+    if sVol
+        array.push(sigs, "volume " + str.tostring(volume / volAvg20, "0.0") + "x average")
+    if sRsiOB
+        array.push(sigs, "RSI above 70")
+    if sRsiOS
+        array.push(sigs, "RSI below 30")
+    if sEma
+        array.push(sigs, ma1 > ma2 ? "fast EMA crossed above mid" : "fast EMA crossed below mid")
+    if sStrong
+        array.push(sigs, "score above 70")
+    if sWeak
+        array.push(sigs, "score below 30")
+    if array.size(sigs) > 0
+        alert(syminfo.ticker + " " + str.tostring(close, format.mintick) + " (" + timeframe.period + "): " + array.join(sigs, ", "), alert.freq_once_per_bar_close)
 
 // ───────────────────────────── Panel ─────────────────────────────
 var table T = table.new(f_pos(panelPos), 4, 70, bgcolor = C_BG, frame_color = C_AMBER, frame_width = 1, border_color = C_GRID, border_width = 1)

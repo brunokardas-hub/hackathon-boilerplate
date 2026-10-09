@@ -208,6 +208,18 @@
   .quick button { background: transparent; color: var(--amber); border: 1px solid var(--line); padding: 2px 8px; font-size: 11px; }
   .quick button:hover { background: var(--amber); color: #000; }
 
+  /* Data-source lights, freshness tags, offline banner */
+  .srcs { display: flex; gap: 8px; align-items: center; font-size: 11px; font-weight: 700; }
+  .srcs button { background: #000; color: var(--muted); border: 0; padding: 3px 6px; font: inherit; display: inline-flex; align-items: center; gap: 4px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; display: inline-block; }
+  .dot.ok { background: var(--up); } .dot.warn { background: var(--amber); } .dot.err { background: var(--down); } .dot.off { background: #444; }
+  .fresh { font-size: 10px; font-weight: 700; padding: 1px 5px; border: 1px solid currentColor; white-space: nowrap; }
+  .fresh.up { color: var(--up); } .fresh.amber { color: var(--amber); } .fresh.down { color: var(--down); } .fresh.muted { color: var(--muted); }
+  .check { font-size: 11px; }
+  .offline { background: var(--down); color: #000; font-weight: 700; padding: 6px 10px; text-align: center; }
+  .statusbox { position: fixed; top: 52px; right: 12px; z-index: 15; background: #0a0a0a; border: 1px solid var(--amber); padding: 10px 12px; max-width: min(420px, calc(100vw - 24px)); }
+  .statusbox table td { padding: 2px 8px 2px 0; vertical-align: top; }
+
   /* Toasts and install button */
   .toasts { position: fixed; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 20; max-width: min(360px, calc(100vw - 24px)); }
   .toast { background: #0a0a0a; border: 1px solid var(--amber); padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.6); }
@@ -246,9 +258,12 @@
     <button class="go" type="submit">&lt;GO&gt;</button>
   </form>
   <div class="clocks" id="clocks"></div>
+  <div class="srcs" id="srcs" aria-label="Data sources"></div>
   <button class="install" id="installBtn" type="button" hidden>⤓ INSTALL APP</button>
 </header>
 
+<div class="offline" id="offline" hidden>OFFLINE: prices, alerts and charts are frozen until the connection comes back.</div>
+<div class="statusbox" id="statusBox" hidden></div>
 <nav class="fkeys">
   <button data-cmd="MAIN" data-view="main" class="on">MAIN</button>
   <button data-cmd="HEAT" data-view="heat">HEAT · HEATMAP</button>
@@ -277,7 +292,7 @@
     <section class="panel" id="p-quote"><h2>MONITOR <small>ADD / DEL &lt;ticker&gt; edits My list</small></h2><div class="body" id="w-quote"></div></section>
   </div>
   <section class="panel" id="p-chart"><h2>GP · CHART <button type="button" class="maxbtn" id="maxBtn" title="Chart fills the screen (Esc to exit)">⤢ MAX</button></h2>
-    <div class="live" id="liveStrip"><span class="amber" id="liveSym"></span><span class="px" id="livePx">—</span><span class="chg" id="liveChg"></span><canvas id="liveSpark" aria-label="Price ticks since the page opened"></canvas><span class="src" id="liveSrc"></span></div>
+    <div class="live" id="liveStrip"><span class="amber" id="liveSym"></span><span class="px" id="livePx">—</span><span class="chg" id="liveChg"></span><span class="fresh muted" id="liveFresh" hidden></span><canvas id="liveSpark" aria-label="Price ticks since the page opened"></canvas><span class="check" id="liveCheck"></span><span class="src" id="liveSrc"></span></div>
     <div class="body"><div id="w-chart" style="position:absolute;inset:0"></div></div></section>
   <section class="panel" id="p-news">
     <h2>N · NEWS <small id="newsStatus"></small></h2>
@@ -396,6 +411,7 @@
           <button type="button" id="notifBtn">ENABLE NOTIFICATIONS</button>
         </form>
         <div class="form" style="border-bottom:0;padding-bottom:0">
+          <p class="fine" style="margin:0 0 6px;width:100%">These alerts stop when this page closes or your phone sleeps. For alerts you'd trade on, set up <a href="https://github.com/brunokardas-hub/hackathon-boilerplate/blob/claude/sleepy-brown-rtpvzg/docs/TRADINGVIEW_ALERTS.md" target="_blank" rel="noopener" style="color:var(--blue)">24/7 TradingView alerts</a> with the Pine script.</p>
           <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="alAi" style="width:auto"> When an alert fires, ask the AI analyst why it moved (≈$0.05–0.15 each, needs an Anthropic key)</label>
         </div>
         <div class="scroll" id="alertBody"></div>
@@ -504,6 +520,7 @@
       <tr><td>/</td><td>Focus the command line</td></tr>
       <tr><td>Esc</td><td>Close this help</td></tr>
     </table>
+    <p style="color:var(--muted)">Data lights (top right): green working, amber slow or limited, red down, grey not in use. Click one for details. Every live price carries a tag: LIVE, DELAYED, STALE or CLOSED. Don't trade on a STALE price. For alerts that run 24/7, see the <a href="https://github.com/brunokardas-hub/hackathon-boilerplate/blob/claude/sleepy-brown-rtpvzg/docs/TRADINGVIEW_ALERTS.md" target="_blank" rel="noopener" style="color:var(--blue)">TradingView alerts guide</a>.</p>
     <p style="color:var(--muted)">Install as an app: on a computer, click ⤓ INSTALL APP at the top right (Chrome or Edge). On iPhone, tap Share → Add to Home Screen in Safari. On Android, tap ⋮ → Install app in Chrome.</p>
     <p style="color:var(--muted)">News: without a key the panel shows TradingView's news feed. With a free Finnhub key it shows Finnhub headlines with a rough keyword tone tag (▲/▼). That tag is a word match, not analysis.</p>
   </div>
@@ -562,6 +579,8 @@
     const s = document.createElement("script");
     s.src = `https://s3.tradingview.com/external-embedding/embed-widget-${widget}.js`;
     s.async = true;
+    s.onload = () => setStatus("tv", "ok", "Widgets loading normally.");
+    s.onerror = () => setStatus("tv", "err", "Couldn't load TradingView widgets. You may be offline, or a browser extension is blocking them.");
     s.textContent = JSON.stringify({ colorTheme: "dark", isTransparent: true, locale: "en", width: "100%", height: "100%", ...config });
     wrap.append(inner, s);
     host.append(wrap);
@@ -575,7 +594,8 @@
     if (!tvScript) {
       tvScript = document.createElement("script");
       tvScript.src = "https://s3.tradingview.com/tv.js";
-      tvScript.onload = () => tvWaiting.splice(0).forEach((f) => f());
+      tvScript.onload = () => { setStatus("tv", "ok", "Charts loading normally."); tvWaiting.splice(0).forEach((f) => f()); };
+      tvScript.onerror = () => { setStatus("tv", "err", "Couldn't load TradingView charts. Check your connection."); tvScript.remove(); tvScript = null; };
       document.head.append(tvScript);
     }
   }
@@ -666,7 +686,9 @@
       if (res.status === 401 || res.status === 403) throw new Error("Finnhub rejected the key — check it, or clear it to use TradingView news.");
       if (res.status === 429) throw new Error("Finnhub rate limit hit — retrying next refresh.");
       if (!res.ok) throw new Error(`Finnhub error ${res.status}`);
-      const items = (await res.json()).filter((n) => n && n.headline).sort((a, b) => b.datetime - a.datetime).slice(0, 80);
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error(data && data.error ? "Finnhub: " + data.error : "Finnhub sent no headlines. Try again in a minute.");
+      const items = data.filter((n) => n && n.headline).sort((a, b) => b.datetime - a.datetime).slice(0, 80);
       renderNews(items);
       setNewsStatus(`Finnhub · ${label} · ${new Date().toLocaleTimeString()}`);
     } catch (e) {
@@ -878,8 +900,15 @@
     if (!key) return null;
     try {
       const res = await fetch(`https://finnhub.io/api/v1/${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(key)}`);
+      if (res.ok) setStatus("fhr", "ok", "Last answer " + new Date().toLocaleTimeString() + ".");
+      else if (res.status === 401) setStatus("fhr", "err", "Finnhub rejected the key. Check it in the NEWS panel.");
+      else if (res.status === 429) setStatus("fhr", "warn", "Finnhub rate limit reached (free plan: 60 calls a minute). Data will lag for a minute.");
+      else if (res.status === 403 && !/price-target/.test(path)) setStatus("fhr", "warn", "Finnhub refused a request your plan doesn't include.");
       return res.ok ? await res.json() : null;
-    } catch { return null; }
+    } catch {
+      setStatus("fhr", "err", "Couldn't reach Finnhub. You may be offline.");
+      return null;
+    }
   }
 
   async function snapshot(sym = symbol) {
@@ -1211,10 +1240,13 @@
     portfolio.forEach((p) => s.add(p.sym));
     return [...s];
   }
-  function setPx(tv, price, prev, live) {
+  function setPx(tv, price, prev, live, ts) {
     const o = px.get(tv) || {};
+    // An older quote arriving after a newer trade only updates the previous close.
+    let older = false;
+    if (isNum(ts) && ts > 0) { if (o.ts && ts < o.ts) older = true; else o.ts = ts; }
     const old = o.price;
-    if (isNum(price) && price > 0) {
+    if (!older && isNum(price) && price > 0) {
       o.price = price;
       const a = spark.get(tv) || [];
       a.push(price);
@@ -1231,7 +1263,7 @@
   }
   async function pollCrypto() {
     const pairs = [...new Set(watchedSyms().map(binSym).filter(Boolean))];
-    if (!pairs.length) return;
+    if (!pairs.length) { setStatus("bin", "off", "Not in use: no crypto on screen, in alerts or in your portfolio."); return; }
     let rows = [];
     try {
       const r = await fetch(`${BIN}ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(pairs))}`);
@@ -1244,8 +1276,11 @@
     const by = new Map(rows.map((x) => [x.symbol, x]));
     for (const tv of watchedSyms()) {
       const x = by.get(binSym(tv));
-      if (x) setPx(tv, +x.lastPrice, +x.prevClosePrice);
+      if (x) setPx(tv, +x.lastPrice, +x.prevClosePrice, false, +x.closeTime || Date.now());
     }
+    if (rows.length) setStatus("bin", "ok", `Updated ${new Date().toLocaleTimeString()} (${rows.length} pair${rows.length === 1 ? "" : "s"}).`);
+    else setStatus("bin", "err", "Couldn't reach Binance market data. You may be offline, or Binance is blocked on this network.");
+    binLastTry = Date.now();
   }
   const lastStockPoll = new Map();
   async function pollStocks(force) {
@@ -1256,13 +1291,13 @@
     for (const s of list) {
       lastStockPoll.set(s, now);
       const q = await fh(`quote?symbol=${encodeURIComponent(bareTicker(s))}`);
-      if (q && q.c) setPx(s, q.c, q.pc);
+      if (q && q.c) setPx(s, q.c, q.pc, false, q.t ? q.t * 1000 : Date.now());
     }
   }
   let ws = null, wsKey = null, wsSubs = new Set(), wsRetry = 5000;
   function wsSync() {
     const key = finnhubKey();
-    if (!key) { if (ws) { const w = ws; ws = null; w.close(); } return; }
+    if (!key) { if (ws) { const w = ws; ws = null; w.close(); } setStatus("fhw", "off", "Off: add a free Finnhub key (NEWS panel) for real-time stock, FX and crypto trades."); setStatus("fhr", "off", "Off: add a free Finnhub key (NEWS panel) for stock quotes, research and headlines."); return; }
     if (!ws || wsKey !== key) return connectWs(key);
     if (ws.readyState !== 1) return;
     const want = new Set(watchedSyms().map(fhSym).filter(Boolean));
@@ -1276,17 +1311,19 @@
     let me;
     try { me = new WebSocket(`wss://ws.finnhub.io?token=${encodeURIComponent(key)}`); } catch { return; }
     ws = me;
-    me.onopen = () => { wsRetry = 5000; wsSync(); };
+    me.onopen = () => { wsRetry = 5000; setStatus("fhw", "ok", "Connected. Real-time trades stream in during market hours."); wsSync(); };
     me.onmessage = (ev) => {
       let m;
       try { m = JSON.parse(ev.data); } catch { return; }
       if (m.type !== "trade" || !Array.isArray(m.data)) return;
       const last = new Map();
-      for (const t of m.data) last.set(t.s, t.p);
-      for (const [fs, p] of last) for (const tv of watchedSyms()) if (fhSym(tv) === fs) setPx(tv, p, null, true);
+      for (const t of m.data) last.set(t.s, t);
+      for (const [fs, t] of last) for (const tv of watchedSyms()) if (fhSym(tv) === fs) setPx(tv, t.p, null, true, t.t);
+      wsLastMsg = Date.now();
     };
     me.onclose = () => {
       if (ws !== me) return;
+      setStatus("fhw", "err", `Disconnected. Reconnecting in ${Math.round(wsRetry / 1000)} s. Prices fall back to quotes every 60 s.`);
       ws = null;
       setTimeout(() => { if (!ws) wsSync(); }, wsRetry);
       wsRetry = Math.min(wsRetry * 2, 60_000);
@@ -1305,6 +1342,8 @@
     if (!o || !isNum(o.price)) {
       pxEl.textContent = "—";
       chg.textContent = "";
+      $("liveFresh").hidden = true;
+      $("liveCheck").textContent = "";
       const c = assetClass(symbol);
       src.textContent = c === "macro" ? "Live strip covers stocks, crypto and FX. The chart has live data for every symbol."
         : c === "stock" && !finnhubKey() ? "Live price: add a free Finnhub key in the NEWS panel (crypto works without one)."
@@ -1327,7 +1366,8 @@
       chg.className = "chg " + signCls(d);
     } else { chg.textContent = ""; }
     const c = assetClass(symbol);
-    src.textContent = (o.live ? "● LIVE · Finnhub" : c === "crypto" ? "Binance · every 10 s" : "Finnhub · every 60 s") + (c === "crypto" ? " · change is 24 h" : "");
+    src.textContent = (o.live ? "Finnhub live trades" : c === "crypto" ? "Binance · every 10 s" : "Finnhub · every 60 s") + (c === "crypto" ? " · change is 24 h" : "");
+    renderFresh();
     drawSpark();
   }
   function drawSpark() {
@@ -1633,7 +1673,7 @@
     });
     const t = el("table", "t");
     const hr = el("tr");
-    [["SYMBOL"], ["QTY", 1], ["AVG COST", 1], ["LAST", 1], ["VALUE", 1], ["P&L", 1], ["P&L %", 1], ["TODAY", 1], ["WEIGHT", 1], [""]].forEach(([h, r]) => hr.append(th(h, r)));
+    [["SYMBOL"], ["QTY", 1], ["AVG COST", 1], ["LAST", 1], ["DATA"], ["VALUE", 1], ["P&L", 1], ["P&L %", 1], ["TODAY", 1], ["WEIGHT", 1], [""]].forEach(([h, r]) => hr.append(th(h, r)));
     t.append(hr);
     for (const { p, o, val, day } of rows) {
       const pl = isNum(val) ? val - p.qty * p.cost : NaN, plp = isNum(pl) ? (pl / (p.qty * p.cost)) * 100 : NaN;
@@ -1646,13 +1686,13 @@
       x.addEventListener("click", () => setPosition(p.sym, 0, 0));
       const xc = el("td"); xc.append(x);
       tr.append(s, td(p.qty.toLocaleString("en-US", { maximumFractionDigits: 8 }), "r"), td(fmt(p.cost), "r"), td(isNum(o.price) ? fmt(o.price) : "—", "r"),
-        td(fmtUsd(val), "r"), td(fmtUsd(pl), "r " + signCls(pl)), td(fmtPct(plp), "r " + signCls(plp)), td(fmtUsd(day), "r " + signCls(day)),
+        freshCell(p.sym), td(fmtUsd(val), "r"), td(fmtUsd(pl), "r " + signCls(pl)), td(fmtPct(plp), "r " + signCls(plp)), td(fmtUsd(day), "r " + signCls(day)),
         td(isNum(val) && tv ? ((val / tv) * 100).toFixed(1) + "%" : "—", "r"), xc);
       t.append(tr);
     }
     const tot = el("tr", "total");
     const tpl = tv - tc;
-    tot.append(td("TOTAL"), td(""), td(""), td(""), td(fmtUsd(tv), "r"), td(fmtUsd(tpl), "r " + signCls(tpl)), td(fmtPct(tc ? (tpl / tc) * 100 : NaN), "r " + signCls(tpl)), td(fmtUsd(tday), "r " + signCls(tday)), td("100%", "r"), td(""));
+    tot.append(td("TOTAL"), td(""), td(""), td(""), td(""), td(fmtUsd(tv), "r"), td(fmtUsd(tpl), "r " + signCls(tpl)), td(fmtPct(tc ? (tpl / tc) * 100 : NaN), "r " + signCls(tpl)), td(fmtUsd(tday), "r " + signCls(tday)), td("100%", "r"), td(""));
     t.append(tot);
     const missing = rows.filter((r) => !isNum(r.val)).map((r) => bareTicker(r.p.sym));
     $("portBody").replaceChildren(t, el("div", "fine", (missing.length ? `No price yet for ${missing.join(", ")} (US stocks need a Finnhub key; FX needs the key's live feed; indices and commodities aren't supported), so totals leave them out. ` : "") + "Values in USD. Crypto 'today' is the 24-hour change."));
@@ -1716,11 +1756,18 @@
     toast("AI explainer", `Looking into ${bareTicker(a.sym)}. See AI · ANALYST.`);
     ask(`My price alert just fired: ${a.sym} moved ${a.op === ">" ? "above" : "below"} ${a.level} and is now ${price}. In under 150 words, explain why it's moving (search the web for today's news), whether the move is company-specific or market-wide, and the next levels or events to watch.`, `ALERT · ${bareTicker(a.sym)} ${a.op} ${fmt(a.level)}`, a.sym);
   }
+  function alertStatusCell(a, now) {
+    if (a.fired) return td(`FIRED ${new Date(a.firedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} @ ${fmt(a.firedPx)}`, "up");
+    if (!isNum(now)) return td("NO PRICE: can't check", "down");
+    const f = freshness(a.sym);
+    if (f && f.cls === "down") return td("WAITING · " + f.txt + ": may miss", "down");
+    return td("WAITING" + (f ? " · " + f.txt : ""), f && f.cls === "amber" ? "amber" : "muted");
+  }
   function renderAlerts() {
     const perm = "Notification" in window ? Notification.permission : "unsupported";
     $("notifBtn").textContent = perm === "granted" ? "NOTIFICATIONS ON" : perm === "denied" ? "NOTIFICATIONS BLOCKED" : perm === "unsupported" ? "NO NOTIFICATIONS" : "ENABLE NOTIFICATIONS";
     $("notifBtn").disabled = perm !== "default";
-    $("alrtStatus").textContent = "checks while this page is open";
+    $("alrtStatus").textContent = "checks only while this page is open";
     if (!alerts.length) return msgIn("alertBody", "No alerts yet. Crypto alerts work with no key. Stock and FX alerts need a free Finnhub key (NEWS panel on MAIN).");
     const t = el("table", "t");
     const hr = el("tr");
@@ -1737,7 +1784,7 @@
       const s = td(bareTicker(a.sym), "amber");
       s.style.cursor = "pointer"; s.addEventListener("click", () => run(a.sym));
       tr.append(s, td(a.op === ">" ? "above" : "below"), td(fmt(a.level), "r"), td(isNum(now) ? fmt(now) : "—", "r"), td(a.fired ? "—" : fmtPct(dist), "r"),
-        td(a.fired ? `FIRED ${new Date(a.firedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} @ ${fmt(a.firedPx)}` : isNum(now) ? "WAITING" : "NO PRICE YET", a.fired ? "up" : "muted"), xc);
+        alertStatusCell(a, now), xc);
       t.append(tr);
     });
     const clear = el("button", "tbtn", "CLEAR FIRED");
@@ -1786,6 +1833,8 @@
   $("cLive").addEventListener("click", () => {
     const p = px.get(symbol)?.price;
     if (!isNum(p)) return toast("Calculator", `No live price for ${bareTicker(symbol)} yet.`);
+    const f = freshness(symbol);
+    if (f && f.cls !== "up") toast("Check this price", `${bareTicker(symbol)} price is ${f.txt.toLowerCase()}. Confirm it with your broker before sizing a trade.`);
     $("cEntry").value = p;
     $("cFrac").checked = assetClass(symbol) === "crypto";
     calc();
@@ -1845,9 +1894,131 @@
   });
   window.addEventListener("appinstalled", () => toast("Installed", "Open Terminal from your home screen or app list."));
 
+  // ───────────────────────── Reliability: sources, freshness, offline, cross-check ─────────────────────────
+  const SRC = {
+    tv: { label: "TV", name: "TradingView charts & widgets", state: "warn", msg: "Loading…" },
+    bin: { label: "BIN", name: "Binance crypto prices", state: "off", msg: "Not in use yet." },
+    fhr: { label: "FH", name: "Finnhub quotes & research", state: "off", msg: "Off: add a free Finnhub key (NEWS panel)." },
+    fhw: { label: "LIVE", name: "Finnhub real-time trades", state: "off", msg: "Off: add a free Finnhub key (NEWS panel)." },
+  };
+  let binLastTry = 0, wsLastMsg = 0;
+  function setStatus(k, state, msg) {
+    const s = SRC[k];
+    if (!s || (s.state === state && s.msg === msg)) return;
+    s.state = state; s.msg = msg; s.t = Date.now();
+    renderSrcs();
+  }
+  function renderSrcs() {
+    $("srcs").replaceChildren(...Object.entries(SRC).map(([k, s]) => {
+      const b = el("button");
+      b.type = "button";
+      b.title = `${s.name}: ${s.msg}`;
+      b.append(el("span", "dot " + s.state), s.label);
+      b.addEventListener("click", toggleStatusBox);
+      return b;
+    }));
+    if (!$("statusBox").hidden) fillStatusBox();
+  }
+  function fillStatusBox() {
+    const t = el("table");
+    for (const s of Object.values(SRC)) {
+      const tr = el("tr");
+      const d = el("td"); d.append(el("span", "dot " + s.state));
+      tr.append(d, el("td", "amber", s.name), el("td", "", s.msg));
+      t.append(tr);
+    }
+    const close = el("button", "tbtn", "CLOSE");
+    close.type = "button";
+    close.style.marginTop = "8px";
+    close.addEventListener("click", toggleStatusBox);
+    $("statusBox").replaceChildren(el("b", "amber", "DATA SOURCES"), t,
+      el("div", "fine", "Green: working. Amber: slow or limited. Red: not working, so prices from it are frozen. Grey: not in use. TradingView's own charts can be delayed for some exchanges; the chart's legend says so when they are."), close);
+  }
+  function toggleStatusBox() { const b = $("statusBox"); b.hidden = !b.hidden; if (!b.hidden) fillStatusBox(); }
+
+  // Market sessions (New York time). US exchange holidays are not detected.
+  function nyNow() {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+    return { day: p.weekday, min: (+p.hour % 24) * 60 + +p.minute };
+  }
+  function marketOpen(tv) {
+    const c = assetClass(tv), { day, min } = nyNow();
+    if (c === "crypto") return true;
+    if (c === "forex") return !(day === "Sat" || (day === "Fri" && min >= 17 * 60) || (day === "Sun" && min < 17 * 60));
+    if (day === "Sat" || day === "Sun") return false;
+    return min >= 9 * 60 + 30 && min < 16 * 60;
+  }
+  function ageTxt(sec) { return sec < 90 ? Math.round(sec) + "s" : sec < 5400 ? Math.round(sec / 60) + "m" : Math.round(sec / 3600) + "h"; }
+  // LIVE ≤ 30 s, DELAYED ≤ 5 min, STALE beyond; CLOSED when the market is shut.
+  function freshness(tv) {
+    const o = px.get(tv);
+    if (!o || !o.ts) return null;
+    const age = Math.max(0, (Date.now() - o.ts) / 1000);
+    if (!marketOpen(tv)) return { txt: "CLOSED", cls: "muted", tip: `Market closed. Last trade ${new Date(o.ts).toLocaleString()}.` };
+    if (age <= 30) return { txt: "LIVE", cls: "up", tip: `Last trade ${ageTxt(age)} ago.` };
+    if (age <= 300) return { txt: "DELAYED " + ageTxt(age), cls: "amber", tip: `Last trade ${ageTxt(age)} ago. Quotes every 60 s on the free plan; a Finnhub key's live feed makes it real-time.` };
+    return { txt: "STALE " + ageTxt(age), cls: "down", tip: `No new price for ${ageTxt(age)}. Don't trade on this number.` };
+  }
+  function freshCell(tv) {
+    const f = freshness(tv), c = el("td");
+    if (!f) { c.textContent = "—"; c.className = "muted"; return c; }
+    const t = el("span", "fresh " + f.cls, f.txt);
+    t.title = f.tip;
+    c.append(t);
+    return c;
+  }
+  function renderFresh() {
+    const f = freshness(symbol), e = $("liveFresh");
+    if (!f) { e.hidden = true; return; }
+    e.hidden = false;
+    e.textContent = f.txt;
+    e.className = "fresh " + f.cls;
+    e.title = f.tip;
+  }
+
+  // Crypto cross-check: compare Binance with Coinbase, flag gaps over 0.5 %.
+  async function crossCheck() {
+    const sym = symbol, pair = binSym(sym), mine = px.get(sym)?.price;
+    if (!pair || !isNum(mine)) { $("liveCheck").textContent = ""; return; }
+    const base = pair.replace(/USDT$|USDC$/, "");
+    try {
+      const r = await fetch(`https://api.exchange.coinbase.com/products/${base}-USD/ticker`);
+      if (!r.ok) throw new Error(String(r.status));
+      const cb = +(await r.json()).price;
+      if (sym !== symbol || !isNum(cb) || cb <= 0) return;
+      const diff = (mine / cb - 1) * 100, e = $("liveCheck");
+      e.textContent = Math.abs(diff) > 0.5 ? `⚠ Coinbase ${fmt(cb)} (${fmtPct(-diff)})` : "✓ matches Coinbase";
+      e.className = "check " + (Math.abs(diff) > 0.5 ? "down" : "muted");
+      e.title = Math.abs(diff) > 0.5 ? "Binance and Coinbase disagree by more than 0.5%. One feed may be lagging. Check your exchange before trading." : `Binance and Coinbase agree within 0.5% (gap ${diff.toFixed(2)}%).`;
+    } catch { $("liveCheck").textContent = ""; }
+  }
+
+  // Watchdog: refresh tags, flag sources that went quiet.
+  setInterval(() => {
+    renderFresh();
+    if (SRC.bin.state === "ok" && Date.now() - binLastTry > 45_000) setStatus("bin", "warn", "No update for 45 s. The tab may be asleep.");
+    if (SRC.fhw.state === "ok" && wsLastMsg && Date.now() - wsLastMsg > 120_000 && watchedSyms().some((s) => marketOpen(s) && fhSym(s))) {
+      setStatus("fhw", "warn", `Connected, but no trades for ${ageTxt((Date.now() - wsLastMsg) / 1000)} while a market is open.`);
+    }
+    if (view === "port") schedulePort();
+  }, 5000);
+  setInterval(crossCheck, 30_000);
+
+  function setOnline() {
+    $("offline").hidden = navigator.onLine;
+    if (navigator.onLine) refreshPrices(true);
+  }
+  window.addEventListener("online", setOnline);
+  window.addEventListener("offline", setOnline);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { refreshPrices(true); renderFresh(); } });
+  $("offline").hidden = navigator.onLine;
+  renderSrcs();
+
   // Hooks into symbol changes and views.
   function afterSymbol() {
     renderLive();
+    $("liveCheck").textContent = "";
+    setTimeout(crossCheck, 2000);
     loadNote();
     refreshPrices(true);
     if (view === "res") loadRes();

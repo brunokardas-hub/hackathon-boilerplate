@@ -14,6 +14,7 @@ A Bloomberg-style dashboard for TradingView, written in Pine Script v6. It draws
 - **Monitor**: six symbols you choose (default SPY, QQQ, DXY, US10Y, Gold, BTC)
 - **Analyst note and score**: a plain-English summary of the move, trend, momentum, 52-week position, relative strength and upcoming earnings, plus a 0–100 score (shown in the Data Window, with alerts above 70 and below 30). It's rule-based arithmetic on the panel's numbers, not AI and not advice.
 - **MARKET panel** (a second panel, bottom-left by default): a 4×3 heatmap coloured by % change, a breadth line with the day's leader and laggard, and a screener you can sort by % change, RSI or relative volume and filter to gainers, losers, oversold, overbought or unusual volume. Choose the universe: US sectors, US mega caps, crypto, global macro, or your own list of up to 12 tickers.
+- **24/7 alerts**: alert conditions for your own price levels, prior-day high/low breaks, gaps, volume spikes, 52-week breaks, RSI, EMA crosses and the score, plus one bundled alert ("Any alert() function call") that covers them all. Setup: [docs/TRADINGVIEW_ALERTS.md](docs/TRADINGVIEW_ALERTS.md).
 - **Overlays and alerts**: EMAs, VWAP and the prior day's high/low, plus alerts for 52-week breaks, RSI extremes and EMA crosses
 
 **Install:** open TradingView → *Pine Editor* → paste in the contents of `terminal.pine` → *Save* → *Add to chart*. Change symbols, position and size in the indicator's settings.
@@ -38,6 +39,8 @@ A Bloomberg-style page in a single file. Use it at **https://brunokardas-hub.git
 - **ALRT**: price alerts (`ALERT BTCUSD > 70000`) with a notification, a sound and, optionally, an AI explanation of the move; plus a position-size calculator. Alerts are checked while the page is open.
 - **Quick AI questions**: one-tap buttons in the AI screen (explain this move, bull vs bear, latest earnings, levels and catalysts, vs sector).
 - **Installable app**: click ⤓ INSTALL APP (Chrome/Edge), or on iPhone use Share → Add to Home Screen. It opens full-screen with its own icon.
+
+- **Reliability**: lights in the header show each data source's state (TradingView, Binance, Finnhub quotes, Finnhub live feed); every live price carries a LIVE / DELAYED / STALE / CLOSED tag (also in the portfolio and alerts); crypto prices are cross-checked against Coinbase; an offline banner appears when the connection drops; the calculator warns before using a delayed price.
 
 API keys are stored only in your browser and are sent only to their own provider (Finnhub or Anthropic). Don't save them on a shared computer, and set a monthly spend limit in the Claude Console.
 
