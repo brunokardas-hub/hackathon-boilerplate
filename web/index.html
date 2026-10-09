@@ -362,6 +362,7 @@
   <button data-cmd="MAIN" data-view="main" class="on">MAIN</button>
   <button data-cmd="CHARTS" data-view="chart">CHARTS</button>
   <button data-cmd="GRID" data-view="grid">MULTI-CHART</button>
+  <button data-cmd="SCAN" data-view="scan">SCANNER</button>
   <button data-cmd="HEAT" data-view="heat">HEATMAP</button>
   <button data-cmd="EQS" data-view="eqs">SCREENER</button>
   <button data-cmd="RES" data-view="res">RESEARCH</button>
@@ -641,6 +642,19 @@
   </div>
 </section>
 
+<section class="view" id="v-scan">
+  <div class="full">
+    <div class="subtabs">
+      <span class="title">SCAN · SETUP SCANNER</span><span id="scanStatus" class="muted"></span>
+      <span style="margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="scanAlerts"> Alert me on new A-grade setups</label>
+        <button type="button" id="scanNow">SCAN NOW</button>
+      </span>
+    </div>
+    <div class="scroll" style="flex:1;overflow:auto;padding:8px" id="scanBody"></div>
+  </div>
+</section>
+
 <section class="view" id="v-bt">
   <div class="full">
     <div class="subtabs"><span class="title">BACKTEST · PROVE THE STRATEGY FIRST</span><span class="muted" id="btData"></span><span style="margin-left:auto" class="muted">Crypto here (Binance history). Stocks: tradingview/terminal_strategy.pine on TradingView.</span></div>
@@ -806,6 +820,7 @@
       <tr><td>MAX</td><td>Chart fills the screen (Esc to exit)</td></tr>
       <tr><td>ADD TSLA · DEL TSLA</td><td>Add to / remove from My list (monitor and ticker strip)</td></tr>
       <tr><td>GRID · GRID 2 · GRID 4 NVDA SPY QQQ SMH</td><td>Multi-chart: one symbol on several timeframes, or several symbols</td></tr>
+      <tr><td>SCAN</td><td>Setup scanner over My list: entry, ATR stop, 2R target, grade; optional alerts on new A-grade setups</td></tr>
       <tr><td>BT · BACKTEST</td><td>Test a setup on years of history with costs, in-sample vs out-of-sample</td></tr>
       <tr><td>FLOW</td><td>Order flow: buy vs sell pressure, large trades, order book walls, 13F holders and market makers</td></tr>
       <tr><td>RES</td><td>Earnings calendar, analyst ratings, insider trades</td></tr>
@@ -1083,6 +1098,7 @@
     if (["RES", "ERN", "ANR", "INS", "EE"].includes(c)) return showView("res");
     if (["FLOW", "MM", "ORDERFLOW", "ORDER FLOW", "BOOK"].includes(c)) return showView("flow");
     if (["BT", "BACKTEST", "TEST"].includes(c)) return showView("bt");
+    if (["SCAN", "SCANNER", "SETUPS"].includes(c)) return showView("scan");
     if (["PORT", "PF", "PORTFOLIO"].includes(c)) return showView("port");
     if (["JRNL", "JOURNAL", "LOG", "TRADES"].includes(c)) return showView("jrnl");
     if ((m = c.match(/^LOG (LONG|SHORT|BUY|SELL) (\S+) ([\d.]+) ?(?:@|AT) ?([\d.]+)(?: STOP ([\d.]+))?(?: (?:TARGET|TP) ([\d.]+))?$/))) {
@@ -3488,7 +3504,7 @@
   }
 
   // ───────────────────────── Pre-trade checklist and grade ─────────────────────────
-  // A = no failed check and at most one unconfirmed; B = no failed check; C = at least one failed check.
+  // A = nothing fails or looks weak (up to two checks may be unconfirmed); B = nothing fails; C = something fails.
   async function evaluateTrade(t) {
     const checks = [], add = (id, label, status, detail) => checks.push({ id, label, status, detail });
     const want = t.side === "short" ? -1 : 1, word = want > 0 ? "up" : "down";
@@ -3528,14 +3544,14 @@
     // 7. Market mood
     const md = moodFor(t.sym), aligned = want > 0 ? md.state === "on" : md.state === "off", against = want > 0 ? md.state === "off" : md.state === "on";
     add("mood", "Overall market supports it", md.state === "unknown" ? "unknown" : aligned ? "pass" : against ? "fail" : "warn", md.detail);
-    const fails = checks.filter((c) => c.status === "fail").length, soft = checks.filter((c) => c.status === "warn" || c.status === "unknown").length;
-    return { checks, grade: fails ? "C" : soft <= 1 ? "A" : "B" };
+    const fails = checks.filter((c) => c.status === "fail").length, warns = checks.filter((c) => c.status === "warn").length, unknown = checks.filter((c) => c.status === "unknown").length;
+    return { checks, grade: fails ? "C" : !warns && unknown <= 2 ? "A" : "B" };
   }
   const ICON = { pass: ["✓", "up"], warn: ["!", "amber"], fail: ["✗", "down"], unknown: ["?", "muted"] };
   function renderChecklist(host, res) {
     const head = el("div", "row");
     head.style.cssText = "display:flex;gap:10px;align-items:center;margin-bottom:6px";
-    head.append(el("span", "grade g" + res.grade, res.grade), el("b", "", res.grade === "A" ? "A-GRADE: everything lines up." : res.grade === "B" ? "B-GRADE: nothing fails, but some checks are weak or unconfirmed." : "C-GRADE: at least one check fails. Think twice."));
+    head.append(el("span", "grade g" + res.grade, res.grade), el("b", "", res.grade === "A" ? "A-GRADE: everything that could be checked lines up." : res.grade === "B" ? "B-GRADE: nothing fails, but some checks are weak or unconfirmed." : "C-GRADE: at least one check fails. Think twice."));
     const ul = el("ul", "checks");
     for (const c of res.checks) {
       const [ic, cls] = ICON[c.status], li = el("li");
@@ -3584,6 +3600,116 @@
   setTimeout(refreshMood, 1500);
   $("moodBtn").addEventListener("click", () => toast("Market mood", `Stocks: ${mood.stocks.detail} Crypto: ${mood.crypto.detail}`));
 
+  // ───────────────────────── Setup scanner ─────────────────────────
+  // Every symbol in My list: the backtester's setups on the last closed daily and
+  // 4-hour bars, plus trend-pullback candidates, each with an ATR stop, a 2R target
+  // and the same A/B/C checklist as the journal.
+  let scanRows = [], scanAt = 0, scanBusy = false;
+  const alerted = new Set(loadJSON("term.scanAlerted", []));
+  async function scanSymbol(sym) {
+    const [dD, d4] = await Promise.all([getCandles(sym, "D", 260).catch(() => ({ error: "load failed" })), getCandles(sym, "240", 260).catch(() => ({ error: "load failed" }))]);
+    if (dD.error || d4.error) return { sym, error: dD.error || d4.error };
+    const kD = indicators(dD), iD = dD.c.length - 2, i4 = d4.c.length - 2; // last closed bars
+    const price = px.get(sym)?.price ?? dD.c.at(-1), atr = kD.atr[iD];
+    const tD = trendAt(dD, iD), t4 = trendAt(d4, i4);
+    const found = [];
+    for (const [setup, d, i, tf] of [["breakout", dD, iD, "1D"], ["pullback", dD, iD, "1D"], ["volspike", dD, iD, "1D"], ["score", dD, iD, "1D"], ["breakout", d4, i4, "4H"], ["pullback", d4, i4, "4H"], ["volspike", d4, i4, "4H"]]) {
+      const sg = signalAt(d, i, setup);
+      if (sg) found.push({ setup: `${SETUP_NAMES[setup]} (${tf})`, side: sg });
+    }
+    const nearEma = Math.abs(price - kD.e20[iD]) <= atr;
+    if (!found.length && tD && tD === t4 && nearEma) found.push({ setup: "Pullback zone (watch)", side: tD, watch: true });
+    const pick = found.find((f) => f.side === tD) || found[0];
+    const base = { sym, price, atr, tD, t4, score: kD.score[iD], vol: dD.v[iD] / kD.volAvg[iD], rsi: kD.rsi[iD], hi20: kD.hh20[iD + 1], lo20: kD.ll20[iD + 1] };
+    if (!pick) return { ...base, setup: null };
+    const side = pick.side, stop = price - side * 1.5 * atr, target = price + side * 3 * atr;
+    if (!(stop > 0) || !(target > 0) || atr / price > 0.25) return { ...base, error: `${pick.setup}: daily range is ${((atr / price) * 100).toFixed(0)}% of the price, too volatile to place a 1.5× ATR stop. Skipped.` };
+    const acct = accountSize(), riskPct = +rules.risk > 0 ? +rules.risk : 1;
+    let qty = acct > 0 ? (acct * riskPct) / 100 / Math.abs(price - stop) : 1;
+    qty = assetClass(sym) === "crypto" ? Math.floor(qty * 1e4) / 1e4 : Math.max(1, Math.floor(qty));
+    const res = await evaluateTrade({ sym, side: side > 0 ? "long" : "short", qty, entry: price, stop, target });
+    return { ...base, setup: pick.setup, watch: !!pick.watch, others: found.length - 1, side, entry: price, stop, target, qty, grade: res.grade, checks: res.checks };
+  }
+  async function runScan(silent) {
+    if (scanBusy) return;
+    scanBusy = true;
+    if (!silent) $("scanStatus").textContent = `Scanning ${myList.length} symbols…`;
+    const rows = [];
+    for (const sym of myList.slice(0, 20)) {
+      try { rows.push(await scanSymbol(sym)); } catch { rows.push({ sym, error: "Scan failed." }); }
+    }
+    const rank = (r) => (r.error ? 9 : !r.setup ? 8 : { A: 0, B: 2, C: 4 }[r.grade] + (r.watch ? 1 : 0));
+    rows.sort((a, b) => rank(a) - rank(b) || (b.score || 0) - (a.score || 0));
+    scanRows = rows; scanAt = Date.now(); scanBusy = false;
+    if (view === "scan") renderScan();
+    // Alerts: only new A-grade setups (not watch-list candidates), once per symbol, setup and day.
+    if ($("scanAlerts").checked) {
+      for (const r of rows.filter((x) => x.grade === "A" && !x.watch)) {
+        const key = `${r.sym}|${r.setup}|${r.side}|${todayPlus(0)}`;
+        if (alerted.has(key)) continue;
+        alerted.add(key);
+        const title = `A-GRADE SETUP · ${bareTicker(r.sym)} ${r.side > 0 ? "LONG" : "SHORT"}`;
+        const body = `${r.setup}. Entry ${fmt(r.entry)}, stop ${fmt(r.stop)}, target ${fmt(r.target)}.`;
+        toast(title, body, "alert"); notify(title, body); beep();
+      }
+      saveJSON("term.scanAlerted", [...alerted].slice(-200));
+    }
+  }
+  function renderScan() {
+    $("scanStatus").textContent = scanAt ? `Last scan ${new Date(scanAt).toLocaleTimeString()} · ${scanRows.length} symbols · every ${view === "scan" ? "minute while open" : "5 minutes in the background"}` : "Not scanned yet.";
+    if (!myList.length) return msgIn("scanBody", "Add symbols to My list (MAIN or CHARTS) to scan them.");
+    if (!scanRows.length) return msgIn("scanBody", "Scanning…");
+    const t = el("table", "t"), hr = el("tr");
+    [["SYMBOL"], ["GRADE"], ["SETUP"], ["SIDE"], ["PRICE", 1], ["STOP", 1], ["TARGET", 1], ["SIZE", 1], ["SCORE", 1], ["TREND D / 4H"], ["VOL", 1], ["WHY NOT A"], [""]].forEach(([h, r]) => hr.append(th(h, r)));
+    t.append(hr);
+    const arrow = (x) => (x > 0 ? "▲" : x < 0 ? "▼" : "◆");
+    for (const r of scanRows) {
+      const tr = el("tr"), sy = td(bareTicker(r.sym), "amber");
+      sy.style.cursor = "pointer"; sy.title = "Chart " + r.sym; sy.addEventListener("click", () => { run(r.sym); showView("chart"); });
+      if (r.error) { const c = td(r.error, "muted wrap"); c.colSpan = 12; tr.append(sy, c); t.append(tr); continue; }
+      const tc = td(`${arrow(r.tD)} ${arrow(r.t4)}`, r.tD > 0 && r.t4 > 0 ? "up" : r.tD < 0 && r.t4 < 0 ? "down" : "amber");
+      if (!r.setup) {
+        tr.append(sy, td("—", "muted"), td("No setup", "muted"), td(""), td(fmt(r.price), "r"), td(""), td(""), td(""), td(isNum(r.score) ? r.score.toFixed(0) : "—", "r"), tc, td(isNum(r.vol) ? r.vol.toFixed(1) + "×" : "—", "r"), td("", "muted"), td(""));
+        t.append(tr); continue;
+      }
+      const g = el("td"); g.append(el("span", "grade g" + r.grade, r.grade));
+      const why = r.checks.filter((c) => c.status !== "pass").map((c) => (c.status === "fail" ? "✗ " : "? ") + c.label);
+      const w = td(why.length ? why.slice(0, 3).join(" · ") + (why.length > 3 ? " …" : "") : "—", "wrap muted");
+      w.title = r.checks.map((c) => `${ICON[c.status][0]} ${c.label}: ${c.detail}`).join("\n");
+      const act = el("td"), lg = el("button", "tbtn", "LOG"), ch = el("button", "tbtn", "CHART");
+      lg.type = ch.type = "button";
+      lg.title = "Open in the journal with this entry, stop and target";
+      lg.addEventListener("click", () => prefillTrade(r));
+      ch.addEventListener("click", () => { run(r.sym); showView("chart"); });
+      act.append(ch, " ", lg);
+      tr.append(sy, g, td(r.setup + (r.others > 0 ? ` +${r.others}` : ""), r.watch ? "muted" : ""), td(r.side > 0 ? "LONG" : "SHORT", r.side > 0 ? "up" : "down"),
+        td(fmt(r.price), "r"), td(fmt(r.stop), "r down"), td(fmt(r.target), "r up"), td(String(r.qty), "r"), td(isNum(r.score) ? r.score.toFixed(0) : "—", "r"), tc,
+        td(isNum(r.vol) ? r.vol.toFixed(1) + "×" : "—", "r " + (r.vol >= 1.5 ? "amber" : "")), w, act);
+      t.append(tr);
+    }
+    $("scanBody").replaceChildren(t, el("p", "fine", "Setups come from the last closed daily and 4-hour bars. Stops are 1.5× daily ATR and targets 2R; size uses your journal risk rule. Only trade setups that passed the BACKTEST out-of-sample. Stock scans need price history, which Finnhub only includes on paid plans; use TradingView alerts for stocks otherwise."));
+  }
+  function prefillTrade(r) {
+    showView("jrnl");
+    $("jrSide").value = r.side > 0 ? "long" : "short";
+    $("jrSym").value = bareTicker(r.sym);
+    $("jrQty").value = r.qty;
+    $("jrEntry").value = +r.entry.toPrecision(6);
+    $("jrStop").value = +r.stop.toPrecision(6);
+    $("jrTarget").value = +r.target.toPrecision(6);
+    $("jrSetup").value = r.setup;
+    scheduleCheck();
+    toast("Journal", "Filled in from the scanner. Check the price with your broker before logging.");
+  }
+  $("scanNow").addEventListener("click", () => runScan(false));
+  $("scanAlerts").checked = store.get("term.scanAlerts") === "1";
+  $("scanAlerts").addEventListener("change", () => {
+    store.set("term.scanAlerts", $("scanAlerts").checked ? "1" : null);
+    if ($("scanAlerts").checked && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
+  });
+  setInterval(() => { if (view === "scan") runScan(true); }, 60_000);
+  setInterval(() => { if (view !== "scan" && $("scanAlerts").checked) runScan(true); }, 5 * 60_000);
+
   // Hooks into symbol changes and views.
   function afterSymbol() {
     lastNote = null;
@@ -3608,6 +3734,7 @@
     if (v === "jrnl") { renderJournal(); refreshPrices(true); }
     if (v === "chart") { loadChart2(); renderCwQuote(); renderLists(); }
     if (v === "flow") enterFlow();
+    if (v === "scan") { renderScan(); if (Date.now() - scanAt > 50_000) runScan(false); }
     if (v === "bt" && !$("btSym").value) $("btSym").value = binSym(symbol) ? bareTicker(symbol) : "BTCUSDT";
     if (v === "main") renderLists();
   }
