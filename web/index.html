@@ -330,6 +330,15 @@
   .process.compact { grid-template-columns: minmax(0, 1fr); border: 0; }
   .setupcard { border-color: var(--amber); }
   .tl-h { font-weight: 700; margin: 16px 0 4px; letter-spacing: .04em; }
+  .qcall { border: 1px solid var(--line); border-left: 4px solid var(--amber); padding: 8px 10px; margin-bottom: 8px; }
+  .qcall.up { border-left-color: var(--up); } .qcall.down { border-left-color: var(--down); }
+  .qcall > b { font-size: 15px; letter-spacing: .05em; }
+  .qcall.up > b { color: var(--up); } .qcall.down > b { color: var(--down); } .qcall.amber > b { color: var(--amber); }
+  .qbar { position: relative; height: 18px; background: #1a1a1a; margin-top: 6px; max-width: 520px; }
+  .qfill { position: absolute; inset: 0 auto 0 0; background: var(--amber); opacity: .55; }
+  .qfill.up { background: var(--up); } .qfill.dn { background: var(--down); }
+  .qbar span { position: relative; padding-left: 6px; line-height: 18px; font-weight: 700; }
+  .qbar::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px dashed #8c8c8c; }
   .mcbox { border: 1px solid var(--line); border-left: 3px solid var(--amber); padding: 8px 10px; margin: 10px 0; display: flex; flex-direction: column; gap: 3px; }
   #btApproved { padding: 6px 8px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 
@@ -398,6 +407,7 @@
   <button data-cmd="PORT" data-view="port">PORTFOLIO</button>
   <button data-cmd="BT" data-view="bt">BACKTEST</button>
   <button data-cmd="TAIL" data-view="tail">TAIL RISK</button>
+  <button data-cmd="QUANT" data-view="quant">QUANT</button>
   <button data-cmd="JRNL" data-view="jrnl">JOURNAL</button>
   <button data-cmd="ALRT" data-view="tools">ALERTS</button>
   <button data-cmd="AI" data-view="ai">AI ANALYST</button>
@@ -744,6 +754,23 @@
   </div>
 </section>
 
+<section class="view" id="v-quant">
+  <div class="full">
+    <div class="subtabs"><span class="title">QUANT · PROBABILITY, REGIME, BREAKDOWN ODDS, LIQUIDITY</span><span class="muted" style="margin-left:auto">Daily crypto history and live order book from Binance</span></div>
+    <form class="form" id="qForm" autocomplete="off">
+      <label>Symbol<input id="qSym" placeholder="BTCUSD"></label>
+      <label>Horizon<select id="qH"><option value="5" selected>5 days</option><option value="10">10 days</option><option value="20">20 days</option></select></label>
+      <label>Support (blank = 20-day low)<input id="qSup" type="number" step="any" min="0" placeholder="auto"></label>
+      <label>Resistance (blank = 20-day high)<input id="qRes" type="number" step="any" min="0" placeholder="auto"></label>
+      <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="qShort" style="width:auto"> Allow shorts in the model test</label>
+      <button type="submit">▶ RUN</button>
+    </form>
+    <div class="scroll" style="flex:1;overflow:auto;padding:10px" id="qOut">
+      <div class="msgline">Bank-style models in one place: a walk-forward probability of the price being higher, GARCH volatility, a hidden-Markov regime, Monte Carlo odds of breaking support or resistance, trend-vs-mean-reversion tests and liquidity costs. Pick a coin and press RUN.</div>
+    </div>
+  </div>
+</section>
+
 <section class="view" id="v-jrnl">
   <div class="full">
     <div class="subtabs" id="jrTabs">
@@ -889,6 +916,7 @@
       <tr><td>TODAY</td><td>Home screen: mood, risk today, open trades, best setups, movers, alerts, earnings, your process</td></tr>
       <tr><td>Keys 1–9, 0</td><td>Switch screens in menu order (when not typing); / jumps to the orange bar</td></tr>
       <tr><td>SCAN</td><td>Setup scanner over My list: entry, ATR stop, 2R target, grade; optional alerts on new A-grade setups</td></tr>
+      <tr><td>QUANT · QUANT SOLUSDT · PROB · GARCH · REGIME</td><td>Quant models: walk-forward buy/sell probability, GARCH volatility, hidden-Markov regime, breakdown odds, Hurst and variance ratio, liquidity and slippage, position size</td></tr>
       <tr><td>TAIL · TAIL ETHUSDT · VAR · HILL</td><td>Tail risk: Hill tail index, Gaussian vs Historical vs EVT VaR, rolling Kupiec backtest</td></tr>
       <tr><td>BT · BACKTEST</td><td>Test a setup on years of history with costs, in-sample vs out-of-sample</td></tr>
       <tr><td>FLOW</td><td>Order flow: buy vs sell pressure, large trades, order book walls, 13F holders and market makers</td></tr>
@@ -1192,6 +1220,11 @@
       if (m[1]) $("tlSym").value = m[1];
       showView("tail");
       return runTail();
+    }
+    if ((m = c.match(/^(?:QUANT|QNT|PROB|GARCH|REGIME)(?: (\S+))?$/))) {
+      if (m[1]) $("qSym").value = m[1];
+      showView("quant");
+      return runQuant();
     }
     if (["SCAN", "SCANNER", "SETUPS"].includes(c)) return showView("scan");
     if (["TODAY", "HOME"].includes(c)) return showView("today");
@@ -4219,7 +4252,7 @@
   const CMDS = [["TODAY", "home screen"], ["MAIN", "main screen"], ["CHARTS", "big chart + list"], ["GRID 4", "multi-chart"], ["SCAN", "setup scanner"], ["BACKTEST", "test a setup"], ["JRNL", "trade journal"],
     ["FLOW", "order flow"], ["RES", "research"], ["PORT", "portfolio"], ["ALRT", "alerts & calculator"], ["HEAT", "heatmap"], ["EQS", "screener"], ["AI", "AI analyst"], ["BRIEF", "AI morning brief"],
     ["ASK ", "ask the AI"], ["ADD ", "add to My list"], ["DEL ", "remove from My list"], ["ALERT BTCUSD > ", "price alert"], ["LOG LONG ", "log a trade"], ["PAPER LONG ", "paper trade"], ["CLOSE ", "close a trade"], ["HALF ", "close half"],
-    ["TAIL ", "tail risk (Hill, VaR)"], ["BUY ", "portfolio buy"], ["SELL ", "portfolio sell"], ["MAX", "full-screen chart"], ["SETTINGS", "keys & backup"], ["HELP", "all commands"]];
+    ["TAIL ", "tail risk (Hill, VaR)"], ["QUANT ", "quant models (probability, regime, liquidity)"], ["BUY ", "portfolio buy"], ["SELL ", "portfolio sell"], ["MAX", "full-screen chart"], ["SETTINGS", "keys & backup"], ["HELP", "all commands"]];
   function fillCmdList() {
     const opts = [...CMDS.map(([v, l]) => [v, l]), ...myList.map((s) => [bareTicker(s), "load " + s])];
     $("cmdList").replaceChildren(...opts.map(([v, l]) => { const o = el("option"); o.value = v; o.label = l; return o; }));
@@ -4261,12 +4294,12 @@
     ];
   }
 
-  const VERSION = "2026.10.12-tail";
+  const VERSION = "2026.10.12-quant";
   function whatsNew() {
     const seen = store.get("term.version");
     store.set("term.version", VERSION);
     if (!seen || seen === VERSION) return;
-    toast("New: TAIL RISK screen", "Hill tail index and a day-by-day test of Gaussian vs Historical vs Hill/EVT VaR. Open it from the menu or type TAIL BTCUSD.");
+    toast("New: QUANT screen", "Walk-forward buy/sell probability, GARCH volatility, market regime, odds of breaking support or resistance, and liquidity costs. Open it from the menu or type QUANT BTCUSD.");
   }
 
   // ───────────────────────── Tail risk: Hill estimator vs Gaussian VaR ─────────────────────────
@@ -4587,6 +4620,521 @@
   let lastTail = null;
   $("tlForm").addEventListener("submit", (e) => { e.preventDefault(); runTail(); });
 
+  // ───────────────────────── Quant models ─────────────────────────
+  // Daily data only; every model works on log returns. Nothing here looks ahead:
+  // features at day t use data up to t, labels use t+1..t+h, and the walk-forward
+  // model is only ever trained on days whose labels were already known.
+  const Q = {
+    mean: (a) => a.reduce((s, x) => s + x, 0) / a.length,
+    sd(a) { const m = Q.mean(a); return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / (a.length - 1)); },
+    ols(x, y) { // simple regression y = a + b x
+      const mx = Q.mean(x), my = Q.mean(y);
+      let sxy = 0, sxx = 0;
+      for (let i = 0; i < x.length; i++) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) ** 2; }
+      const b = sxx ? sxy / sxx : 0;
+      return { a: my - b * mx, b };
+    },
+    normCdf: (z) => 1 - TAIL.normSf(z),
+
+    // Nelder–Mead minimiser for small problems.
+    nelderMead(f, x0, step = 0.1, iters = 300) {
+      const n = x0.length;
+      let pts = [x0, ...x0.map((_, i) => x0.map((v, j) => (i === j ? v + step : v)))].map((p) => ({ p, f: f(p) }));
+      for (let it = 0; it < iters; it++) {
+        pts.sort((a, b) => a.f - b.f);
+        const c = new Array(n).fill(0);
+        for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) c[j] += pts[i].p[j] / n;
+        const w = pts[n], mv = (t) => c.map((v, j) => v + t * (w.p[j] - v));
+        const r = mv(-1), fr = f(r);
+        if (fr < pts[0].f) { const e = mv(-2), fe = f(e); pts[n] = fe < fr ? { p: e, f: fe } : { p: r, f: fr }; }
+        else if (fr < pts[n - 1].f) pts[n] = { p: r, f: fr };
+        else {
+          const k = mv(0.5), fk = f(k);
+          if (fk < w.f) pts[n] = { p: k, f: fk };
+          else pts = pts.map((q, i) => (i ? { p: q.p.map((v, j) => pts[0].p[j] + 0.5 * (v - pts[0].p[j])), f: 0 } : q)).map((q, i) => (i ? { p: q.p, f: f(q.p) } : q));
+        }
+      }
+      pts.sort((a, b) => a.f - b.f);
+      return pts[0];
+    },
+
+    // GARCH(1,1) with variance targeting: σ²ₜ = ω + α r²ₜ₋₁ + β σ²ₜ₋₁, ω = s²(1−α−β). Gaussian QMLE.
+    garch(r) {
+      const mu = Q.mean(r), e = r.map((x) => x - mu), s2 = e.reduce((s, x) => s + x * x, 0) / e.length;
+      const unpack = (p) => { const a = 1 / (1 + Math.exp(-p[0])), b = 1 / (1 + Math.exp(-p[1])); const sum = a + b; return sum < 0.999 ? [a, b] : [(a / sum) * 0.999, (b / sum) * 0.999]; };
+      const nll = (p) => {
+        const [a, b] = unpack(p), w = s2 * (1 - a - b);
+        let h = s2, ll = 0;
+        for (let t = 0; t < e.length; t++) { ll += Math.log(h) + (e[t] * e[t]) / h; h = w + a * e[t] * e[t] + b * h; }
+        return 0.5 * ll;
+      };
+      let best = null;
+      for (const [a0, b0] of [[0.05, 0.9], [0.1, 0.85], [0.15, 0.7], [0.03, 0.95]]) { const f = Q.nelderMead(nll, [Math.log(a0 / (1 - a0)), Math.log(b0 / (1 - b0))], 0.3, 300); if (!best || f.f < best.f) best = f; }
+      const [a, b] = unpack(best.p), w = s2 * (1 - a - b);
+      const h = [];
+      let ht = s2;
+      for (let t = 0; t < e.length; t++) { h.push(ht); ht = w + a * e[t] * e[t] + b * ht; }
+      const next = ht, z = e.map((x, t) => x / Math.sqrt(h[t]));
+      const forecast = (k) => s2 + Math.pow(a + b, k - 1) * (next - s2); // σ² k days ahead
+      return { mu, omega: w, alpha: a, beta: b, persistence: a + b, halfLife: Math.log(0.5) / Math.log(a + b), uncond: s2, h, next, z, forecast };
+    },
+
+    // Two-state Gaussian hidden Markov model fitted with Baum–Welch (scaled forward–backward).
+    hmm2(r, iters = 60) {
+      const n = r.length, sd = Q.sd(r), m = Q.mean(r);
+      let mu = [m + 0.1 * sd, m - 0.2 * sd], va = [(0.6 * sd) ** 2, (1.6 * sd) ** 2], A = [[0.97, 0.03], [0.06, 0.94]], pi = [0.5, 0.5];
+      const pdf = (x, k) => Math.exp(-((x - mu[k]) ** 2) / (2 * va[k])) / Math.sqrt(2 * Math.PI * va[k]) + 1e-300;
+      let gamma = [], ll = 0;
+      for (let it = 0; it < iters; it++) {
+        const al = new Array(n), be = new Array(n), c = new Array(n);
+        al[0] = [pi[0] * pdf(r[0], 0), pi[1] * pdf(r[0], 1)]; c[0] = al[0][0] + al[0][1]; al[0] = al[0].map((v) => v / c[0]);
+        for (let t = 1; t < n; t++) {
+          const a0 = (al[t - 1][0] * A[0][0] + al[t - 1][1] * A[1][0]) * pdf(r[t], 0), a1 = (al[t - 1][0] * A[0][1] + al[t - 1][1] * A[1][1]) * pdf(r[t], 1);
+          c[t] = a0 + a1; al[t] = [a0 / c[t], a1 / c[t]];
+        }
+        be[n - 1] = [1, 1];
+        for (let t = n - 2; t >= 0; t--) {
+          const b0 = A[0][0] * pdf(r[t + 1], 0) * be[t + 1][0] + A[0][1] * pdf(r[t + 1], 1) * be[t + 1][1];
+          const b1 = A[1][0] * pdf(r[t + 1], 0) * be[t + 1][0] + A[1][1] * pdf(r[t + 1], 1) * be[t + 1][1];
+          be[t] = [b0 / c[t + 1], b1 / c[t + 1]];
+        }
+        gamma = al.map((a, t) => { const g0 = a[0] * be[t][0], g1 = a[1] * be[t][1], s = g0 + g1; return [g0 / s, g1 / s]; });
+        const xi = [[0, 0], [0, 0]];
+        for (let t = 0; t < n - 1; t++) for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) xi[i][j] += (al[t][i] * A[i][j] * pdf(r[t + 1], j) * be[t + 1][j]) / c[t + 1];
+        for (let i = 0; i < 2; i++) { const s = xi[i][0] + xi[i][1]; A[i] = [xi[i][0] / s, xi[i][1] / s]; }
+        for (let k = 0; k < 2; k++) {
+          const w = gamma.reduce((s, g) => s + g[k], 0);
+          mu[k] = gamma.reduce((s, g, t) => s + g[k] * r[t], 0) / w;
+          va[k] = Math.max(1e-10, gamma.reduce((s, g, t) => s + g[k] * (r[t] - mu[k]) ** 2, 0) / w);
+        }
+        pi = gamma[0];
+        ll = c.reduce((s, x) => s + Math.log(x), 0);
+      }
+      // Filtered (real-time) probabilities: only data up to each day.
+      const filt = [];
+      let f = [0.5, 0.5];
+      for (let t = 0; t < n; t++) {
+        const p0 = (t ? f[0] * A[0][0] + f[1] * A[1][0] : 0.5) * pdf(r[t], 0), p1 = (t ? f[0] * A[0][1] + f[1] * A[1][1] : 0.5) * pdf(r[t], 1);
+        f = [p0 / (p0 + p1), p1 / (p0 + p1)];
+        filt.push(f);
+      }
+      const stressed = va[1] > va[0] ? 1 : 0, calm = 1 - stressed;
+      return { mu, sd: va.map(Math.sqrt), A, stressed, calm, pStressed: filt.map((p) => p[stressed]), stayStressed: A[stressed][stressed], stayCalm: A[calm][calm], ll };
+    },
+
+    // Hurst exponent by rescaled range with the Anis–Lloyd small-sample correction:
+    // ~0.5 random walk, > 0.5 trending, < 0.5 mean-reverting.
+    hurst(r) {
+      const ers = (s) => { let a = 0; for (let i = 1; i < s; i++) a += Math.sqrt((s - i) / i); return ((s - 0.5) / s) * (s > 340 ? 1 / Math.sqrt((s * Math.PI) / 2) : Math.exp(lgamma((s - 1) / 2) - lgamma(s / 2)) / Math.sqrt(Math.PI)) * a; };
+      const lgamma = (x) => { let y = x, t = x + 5.5, ser = 1.000000000190015; const c = [76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5]; t -= (x + 0.5) * Math.log(t); for (const k of c) ser += k / ++y; return -t + Math.log((2.5066282746310005 * ser) / x); };
+      const out = [];
+      for (let s = 10; s <= Math.floor(r.length / 4); s = Math.floor(s * 1.5)) {
+        const rs = [];
+        for (let st = 0; st + s <= r.length; st += s) {
+          const seg = r.slice(st, st + s), m = Q.mean(seg);
+          let cum = 0, mx = 0, mn = 0;
+          for (const x of seg) { cum += x - m; mx = Math.max(mx, cum); mn = Math.min(mn, cum); }
+          const sdv = Math.sqrt(seg.reduce((a, x) => a + (x - m) ** 2, 0) / s);
+          if (sdv > 0) rs.push((mx - mn) / sdv);
+        }
+        if (rs.length) out.push([Math.log(s), Math.log(Q.mean(rs)) - Math.log(ers(s))]);
+      }
+      return 0.5 + Q.ols(out.map((p) => p[0]), out.map((p) => p[1])).b;
+    },
+    // Lo–MacKinlay variance ratio VR(q) with its heteroskedasticity-robust z-statistic.
+    varianceRatio(r, q) {
+      const n = r.length, m = Q.mean(r), d = r.map((x) => x - m);
+      const v1 = d.reduce((s, x) => s + x * x, 0) / (n - 1);
+      let vq = 0;
+      for (let t = q - 1; t < n; t++) { let s = 0; for (let j = 0; j < q; j++) s += d[t - j]; vq += s * s; }
+      vq /= q * (n - q + 1) * (1 - q / n);
+      const vr = vq / v1;
+      let theta = 0;
+      const den = d.reduce((s, x) => s + x * x, 0) ** 2;
+      for (let j = 1; j < q; j++) {
+        let num = 0;
+        for (let t = j; t < n; t++) num += d[t] * d[t] * d[t - j] * d[t - j];
+        theta += ((2 * (q - j)) / q) ** 2 * (n * num) / den;
+      }
+      const z = (vr - 1) / Math.sqrt(theta / n);
+      return { vr, z, p: 2 * TAIL.normSf(Math.abs(z)) };
+    },
+    // Half-life of mean reversion of log price around its 50-day average (AR(1) on the deviation).
+    halfLife(logp) {
+      const dev = logp.map((x, i) => (i >= 49 ? x - Q.mean(logp.slice(i - 49, i + 1)) : NaN)).filter(Number.isFinite);
+      const { b } = Q.ols(dev.slice(0, -1), dev.slice(1));
+      return b > 0 && b < 1 ? Math.log(0.5) / Math.log(b) : Infinity;
+    },
+
+    // Walk-forward logistic regression for P(price higher in h days).
+    features(c, v) {
+      const n = c.length, lr = c.map((x, i) => (i ? Math.log(x / c[i - 1]) : 0));
+      const rsiS = IND.rsi(c), F = [];
+      let ew = lr.slice(1, 21).reduce((s, x) => s + x * x, 0) / 20; // EWMA variance (λ = 0.94)
+      const ewS = new Array(n).fill(NaN), longV = new Array(n).fill(NaN);
+      for (let i = 21; i < n; i++) { ew = 0.94 * ew + 0.06 * lr[i] * lr[i]; ewS[i] = Math.sqrt(ew); }
+      for (let i = 0; i < n; i++) {
+        if (i < 260) { F.push(null); continue; }
+        const vol = ewS[i], sma20 = Q.mean(c.slice(i - 19, i + 1)), sd20 = Q.sd(c.slice(i - 19, i + 1));
+        const hi20 = Math.max(...c.slice(i - 19, i + 1)), lo20 = Math.min(...c.slice(i - 19, i + 1));
+        const vAvg = Q.mean(v.slice(i - 19, i + 1)), volYear = Q.mean(ewS.slice(i - 250, i + 1).filter(Number.isFinite));
+        F.push([
+          Math.log(c[i] / c[i - 20]) / (vol * Math.sqrt(20)), // vol-scaled 1-month momentum
+          Math.log(c[i] / c[i - 60]) / (vol * Math.sqrt(60)), // vol-scaled 3-month momentum
+          Math.log(c[i] / c[i - 250]) / (vol * Math.sqrt(250)), // vol-scaled 1-year momentum
+          sd20 > 0 ? (c[i] - sma20) / sd20 : 0, // mean-reversion z-score
+          (rsiS[i] - 50) / 50,
+          Math.log(vol / volYear), // volatility regime
+          vAvg > 0 ? Math.log((v[i] + 1e-9) / vAvg) : 0, // volume surprise
+          (c[i] - hi20) / (vol * c[i]), // distance below the 20-day high, in daily vols
+          (c[i] - lo20) / (vol * c[i]), // distance above the 20-day low
+        ].map((x) => (Number.isFinite(x) ? Math.max(-6, Math.min(6, x)) : 0)));
+      }
+      return { F, ewS, lr };
+    },
+    trainLogit(X, y, lambda = 0.2 * X.length, iters = 250, lr = 0.5) { // ridge penalty tuned on synthetic data: keeps probabilities honest
+      const d = X[0].length, mu = new Array(d).fill(0), sg = new Array(d).fill(0);
+      for (const x of X) x.forEach((v, j) => (mu[j] += v / X.length));
+      for (const x of X) x.forEach((v, j) => (sg[j] += (v - mu[j]) ** 2 / X.length));
+      const s = sg.map((v) => Math.sqrt(v) || 1), Z = X.map((x) => x.map((v, j) => (v - mu[j]) / s[j]));
+      let w = new Array(d).fill(0), b = Math.log((Q.mean(y) + 1e-6) / (1 - Q.mean(y) + 1e-6));
+      for (let it = 0; it < iters; it++) {
+        const gw = new Array(d).fill(0);
+        let gb = 0;
+        for (let i = 0; i < Z.length; i++) {
+          const p = 1 / (1 + Math.exp(-(b + Z[i].reduce((a, v, j) => a + v * w[j], 0)))), e = p - y[i];
+          gb += e; for (let j = 0; j < d; j++) gw[j] += e * Z[i][j];
+        }
+        b -= (lr * gb) / Z.length;
+        w = w.map((v, j) => v - lr * (gw[j] / Z.length + (lambda * v) / Z.length));
+      }
+      return (x) => 1 / (1 + Math.exp(-(b + x.reduce((a, v, j) => a + ((v - mu[j]) / s[j]) * w[j], 0))));
+    },
+    walkForward(c, v, h = 5, opts = {}) {
+      const { F } = Q.features(c, v), n = c.length, start = opts.minTrain || 500, every = opts.every || 20;
+      const y = c.map((x, i) => (i + h < n ? (c[i + h] > x ? 1 : 0) : null));
+      const pred = new Array(n).fill(null);
+      let model = null;
+      const first = F.findIndex((f) => f);
+      for (let t = first + start; t < n; t++) {
+        if (!model || (t - first - start) % every === 0) {
+          const X = [], Y = [];
+          for (let i = first; i <= t - h; i++) if (F[i] && y[i] != null) { X.push(F[i]); Y.push(y[i]); }
+          model = Q.trainLogit(X, Y);
+        }
+        pred[t] = model(F[t]);
+      }
+      // Score out-of-sample days whose outcome is known.
+      const rows = [];
+      for (let t = 0; t < n; t++) if (pred[t] != null && y[t] != null) rows.push({ t, p: pred[t], y: y[t], ret: Math.log(c[t + h] / c[t]) });
+      const base = Q.mean(rows.map((r) => r.y));
+      const brier = Q.mean(rows.map((r) => (r.p - r.y) ** 2)), brierBase = Q.mean(rows.map((r) => (base - r.y) ** 2));
+      const conf = rows.filter((r) => r.p > 0.55 || r.p < 0.45), hits = conf.filter((r) => (r.p > 0.5) === (r.y === 1));
+      const buckets = [[0, 0.45], [0.45, 0.55], [0.55, 1.01]].map(([lo, hi]) => { const b = rows.filter((r) => r.p >= lo && r.p < hi); return { lo, hi, n: b.length, up: b.length ? Q.mean(b.map((r) => r.y)) : NaN, p: b.length ? Q.mean(b.map((r) => r.p)) : NaN }; });
+      // Daily strategy from the predictions: long above 55%, short below 45% (if allowed), flat otherwise.
+      const eq = [], bh = [];
+      let e = 0, bhe = 0;
+      const dr = [];
+      for (let t = 0; t < n - 1; t++) {
+        if (pred[t] == null) continue;
+        const r1 = Math.log(c[t + 1] / c[t]), pos = pred[t] > 0.55 ? 1 : pred[t] < 0.45 ? (opts.shorts ? -1 : 0) : 0;
+        const cost = t && pred[t - 1] != null && pos !== (pred[t - 1] > 0.55 ? 1 : pred[t - 1] < 0.45 ? (opts.shorts ? -1 : 0) : 0) ? 0.002 : 0; // 0.2% per position change
+        e += pos * r1 - cost; bhe += r1; dr.push(pos * r1 - cost);
+        eq.push({ t, e }); bh.push({ t, e: bhe });
+      }
+      const sharpe = (a) => (a.length > 20 && Q.sd(a) > 0 ? (Q.mean(a) / Q.sd(a)) * Math.sqrt(365) : NaN);
+      const bhR = eq.map((x, i) => (i ? bh[i].e - bh[i - 1].e : bh[0].e));
+      let peak = 0, dd = 0;
+      for (const x of eq) { peak = Math.max(peak, x.e); dd = Math.min(dd, x.e - peak); }
+      // Today's probability from a model trained on everything with a known label.
+      const X = [], Y = [];
+      for (let i = first; i < n; i++) if (F[i] && y[i] != null) { X.push(F[i]); Y.push(y[i]); }
+      const now = Q.trainLogit(X, Y)(F[n - 1]);
+      const winners = conf.filter((r) => (r.p > 0.5 ? r.ret : -r.ret) > 0), losers = conf.filter((r) => (r.p > 0.5 ? r.ret : -r.ret) <= 0);
+      const avgW = winners.length ? Q.mean(winners.map((r) => Math.abs(r.ret))) : 0, avgL = losers.length ? Q.mean(losers.map((r) => Math.abs(r.ret))) : 0;
+      return {
+        h, n: rows.length, base, brier, brierBase, skill: 1 - brier / brierBase, confN: conf.length, hitRate: conf.length ? hits.length / conf.length : NaN, buckets,
+        eq, bh, sharpe: sharpe(dr), bhSharpe: sharpe(bhR), ret: e, bhRet: bhe, maxDD: dd, now, pred, avgW, avgL,
+        edge: rows.length > 200 && 1 - brier / brierBase > 0.002 && conf.length >= 100 && hits.length / conf.length > 0.52,
+      };
+    },
+
+    // Filtered historical simulation: GARCH volatility with the coin's own standardized shocks.
+    simulate(c, g, horizon, levels, paths = 5000) {
+      const S0 = c.at(-1), z = g.z.filter(Number.isFinite), H = horizon;
+      const touchDn = new Array(H).fill(0), touchUp = new Array(H).fill(0), finals = [];
+      const cone = Array.from({ length: H }, () => []);
+      for (let k = 0; k < paths; k++) {
+        let h = g.next, logS = Math.log(S0), hitD = false, hitU = false;
+        for (let d = 0; d < H; d++) {
+          const e = Math.sqrt(h) * z[(Math.random() * z.length) | 0];
+          logS += e; // zero drift: no view on direction
+          const S = Math.exp(logS);
+          if (!hitD && levels.support && S <= levels.support) hitD = true;
+          if (!hitU && levels.resistance && S >= levels.resistance) hitU = true;
+          if (hitD) touchDn[d]++;
+          if (hitU) touchUp[d]++;
+          cone[d].push(S);
+          h = g.omega + g.alpha * e * e + g.beta * h;
+        }
+        finals.push(Math.exp(logS));
+      }
+      const q = (a, p) => a[Math.min(a.length - 1, Math.floor(a.length * p))];
+      cone.forEach((a) => a.sort((x, y) => x - y));
+      finals.sort((x, y) => x - y);
+      return {
+        pDn: touchDn.map((x) => x / paths), pUp: touchUp.map((x) => x / paths),
+        closeBelow: levels.support ? finals.filter((x) => x < levels.support).length / paths : NaN,
+        cone: cone.map((a) => [0.05, 0.25, 0.5, 0.75, 0.95].map((p) => q(a, p))),
+      };
+    },
+
+    // Liquidity from daily data: Amihud illiquidity and Roll's implied spread.
+    liquidityDaily(c, v, days = 30) {
+      const n = c.length, am = [], dp = [];
+      for (let i = n - days; i < n; i++) { const r = Math.abs(Math.log(c[i] / c[i - 1])), dv = v[i] * c[i]; if (dv > 0) am.push(r / dv); }
+      for (let i = n - 120; i < n; i++) dp.push(c[i] - c[i - 1]);
+      let cov = 0;
+      const m = Q.mean(dp);
+      for (let i = 1; i < dp.length; i++) cov += (dp[i] - m) * (dp[i - 1] - m);
+      cov /= dp.length - 1;
+      const dollarVol = Q.mean(c.slice(-30).map((x, i) => x * v[n - 30 + i]));
+      return { amihud: Q.mean(am) * 1e6, rollSpread: cov < 0 ? (2 * Math.sqrt(-cov)) / c.at(-1) : NaN, dollarVol };
+    },
+    // Walks the order book to price a market order of `usd` dollars.
+    slippage(book, usd) {
+      const mid = (book.bids[0][0] + book.asks[0][0]) / 2, out = {};
+      for (const [side, lv] of [["buy", book.asks], ["sell", book.bids]]) {
+        let left = usd, qty = 0, cost = 0;
+        for (const [p, q] of lv) { const take = Math.min(left, p * q); cost += take; qty += take / p; left -= take; if (left <= 1e-9) break; }
+        out[side] = left > 1e-6 ? NaN : (Math.abs(cost / qty - mid) / mid) * 1e4; // bps
+      }
+      return out;
+    },
+    // Kyle's lambda: price change per $1M of net aggressive buying, from 1-minute buckets of live trades.
+    kyleLambda(trades) {
+      if (trades.length < 200) return NaN;
+      const buckets = new Map();
+      for (const t of trades) { const k = Math.floor(t.t / 60000), b = buckets.get(k) || { first: t.p, last: t.p, flow: 0 }; b.last = t.p; b.flow += (t.buy ? 1 : -1) * t.p * t.q; buckets.set(k, b); }
+      const rows = [...buckets.values()].filter((b) => b.first > 0);
+      if (rows.length < 15) return NaN;
+      const { b } = Q.ols(rows.map((r) => r.flow / 1e6), rows.map((r) => (Math.log(r.last / r.first)) * 1e4));
+      return b; // bps per $1M
+    },
+  };
+
+  // ───────────────────────── QUANT screen ─────────────────────────
+  const pct1 = (x, d = 1) => (isNum(x) ? (x * 100).toFixed(d) + "%" : "—");
+  function qLine(g, pts, X, Y, col, width = 1.5) {
+    g.strokeStyle = col; g.lineWidth = width; g.beginPath();
+    let on = false;
+    for (const [x, y] of pts) { if (!isNum(y)) { on = false; continue; } on ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)); on = true; }
+    g.stroke(); g.lineWidth = 1;
+  }
+  function qAxes(g, w, h, pad, lo, hi, fmtY) {
+    g.strokeStyle = "#222"; g.fillStyle = "#8c8c8c";
+    for (let i = 0; i <= 4; i++) {
+      const v = lo + ((hi - lo) * i) / 4, y = h - pad.b - ((h - pad.t - pad.b) * i) / 4;
+      g.beginPath(); g.moveTo(pad.l, y); g.lineTo(w - pad.r, y); g.stroke();
+      g.fillText(fmtY(v), 2, y + 4);
+    }
+  }
+  // Last 90 days of price, then the simulated 5–95% and 25–75% cones, with support and resistance.
+  function drawCone(cv, c, sim, lv) {
+    const { g, w, h } = ctx2d(cv), pad = { l: 70, r: 10, t: 18, b: 16 }, hist = c.slice(-90), H = sim.cone.length;
+    const all = [...hist, ...sim.cone.flatMap((q) => [q[0], q[4]]), lv.support, lv.resistance].filter(isNum);
+    const lo = Math.min(...all) * 0.98, hi = Math.max(...all) * 1.02, N = hist.length + H;
+    const X = (i) => pad.l + ((w - pad.l - pad.r) * i) / (N - 1), Y = (v) => h - pad.b - ((h - pad.t - pad.b) * (v - lo)) / (hi - lo);
+    qAxes(g, w, h, pad, lo, hi, (v) => fmt(v));
+    const band = (a, b, col) => {
+      g.fillStyle = col; g.beginPath(); g.moveTo(X(hist.length - 1), Y(hist.at(-1)));
+      sim.cone.forEach((q, d) => g.lineTo(X(hist.length + d), Y(q[a])));
+      for (let d = H - 1; d >= 0; d--) g.lineTo(X(hist.length + d), Y(sim.cone[d][b]));
+      g.closePath(); g.fill();
+    };
+    band(0, 4, "rgba(251,139,30,.15)"); band(1, 3, "rgba(251,139,30,.3)");
+    qLine(g, hist.map((v, i) => [i, v]), X, Y, "#e6e6e6");
+    qLine(g, [[hist.length - 1, hist.at(-1)], ...sim.cone.map((q, d) => [hist.length + d, q[2]])], X, Y, "#fb8b1e", 1);
+    for (const [v, col, t] of [[lv.support, "#ff433d", "support"], [lv.resistance, "#4af626", "resistance"]]) {
+      if (!isNum(v)) continue;
+      g.setLineDash([4, 4]); g.strokeStyle = col; g.beginPath(); g.moveTo(pad.l, Y(v)); g.lineTo(w - pad.r, Y(v)); g.stroke(); g.setLineDash([]);
+      g.fillStyle = col; g.fillText(`${t} ${fmt(v)}`, pad.l + 4, Y(v) - 3);
+    }
+    legend(g, w - 330, 14, [["last 90 days", "#e6e6e6"], ["50% range", "rgba(251,139,30,.6)"], ["90% range", "rgba(251,139,30,.3)"]]);
+  }
+  function drawEquity(cv, wf, t) {
+    const { g, w, h } = ctx2d(cv), pad = { l: 60, r: 10, t: 18, b: 16 };
+    const ys = [...wf.eq.map((x) => x.e), ...wf.bh.map((x) => x.e)], lo = Math.min(0, ...ys), hi = Math.max(0, ...ys), n = wf.eq.length;
+    const X = (i) => pad.l + ((w - pad.l - pad.r) * i) / Math.max(1, n - 1), Y = (v) => h - pad.b - ((h - pad.t - pad.b) * (v - lo)) / (hi - lo || 1);
+    qAxes(g, w, h, pad, lo, hi, (v) => ((Math.exp(v) - 1) * 100).toFixed(0) + "%");
+    qLine(g, wf.bh.map((x, i) => [i, x.e]), X, Y, "#8c8c8c");
+    qLine(g, wf.eq.map((x, i) => [i, x.e]), X, Y, "#4af626");
+    g.fillStyle = "#8c8c8c";
+    g.fillText(new Date(t[wf.eq[0].t]).toLocaleDateString(), pad.l, h - 3);
+    g.fillText(new Date(t[wf.eq.at(-1).t]).toLocaleDateString(), w - pad.r - 80, h - 3);
+    legend(g, pad.l + 4, 14, [["model, out-of-sample, after costs", "#4af626"], ["buy and hold", "#8c8c8c"]]);
+  }
+  // Annualised GARCH volatility with the stressed-regime probability shaded underneath.
+  function drawRegime(cv, gm, hm, t0) {
+    const { g, w, h } = ctx2d(cv), pad = { l: 60, r: 10, t: 18, b: 16 }, n = gm.h.length;
+    const vol = gm.h.map((x) => Math.sqrt(x * 365)), hi = Math.max(...vol) * 1.05;
+    const X = (i) => pad.l + ((w - pad.l - pad.r) * i) / (n - 1), Y = (v) => h - pad.b - ((h - pad.t - pad.b) * v) / hi;
+    g.fillStyle = "rgba(255,67,61,.25)";
+    hm.pStressed.forEach((p, i) => { if (p > 0.5) g.fillRect(X(i), pad.t, Math.max(1, X(1) - X(0)), h - pad.t - pad.b); });
+    qAxes(g, w, h, pad, 0, hi, (v) => (v * 100).toFixed(0) + "%");
+    qLine(g, vol.map((v, i) => [i, v]), X, Y, "#fb8b1e");
+    g.fillStyle = "#8c8c8c"; g.fillText(new Date(t0).toLocaleDateString(), pad.l, h - 3); g.fillText("today", w - pad.r - 40, h - 3);
+    legend(g, pad.l + 4, 14, [["GARCH volatility (annualised)", "#fb8b1e"], ["stressed regime (HMM > 50%)", "rgba(255,67,61,.6)"]]);
+  }
+  function probBar(p, label) {
+    const box = el("div", "qbar"), fill = el("div", "qfill " + (p > 0.55 ? "up" : p < 0.45 ? "dn" : ""));
+    fill.style.width = (p * 100).toFixed(1) + "%";
+    box.append(fill, el("span", "", `${label}: ${(p * 100).toFixed(1)}%`));
+    return box;
+  }
+  async function fetchBook(sym) {
+    if (flow.sym === sym && flow.book && Date.now() - flow.book.t < 60_000) return flow.book;
+    const pair = binSym(sym);
+    if (!pair) return null;
+    try {
+      const r = await fetch(`${BIN}depth?symbol=${pair}&limit=1000`);
+      if (!r.ok) return null;
+      const d = await r.json();
+      return { bids: d.bids.map(([p, q]) => [+p, +q]), asks: d.asks.map(([p, q]) => [+p, +q]), t: Date.now() };
+    } catch { return null; }
+  }
+  // The headline call. A direction is only shown when the model earned it out-of-sample.
+  function quantCall(wf, hm, sim, lv) {
+    const stressed = hm.pStressed.at(-1) > 0.5, p = wf.now;
+    if (!wf.edge) return { cls: "amber", head: "NO PROVEN EDGE", text: `The probability model didn't beat a coin flip out-of-sample on this coin (skill ${(wf.skill * 100).toFixed(2)}%, hit rate ${pct1(wf.hitRate)} on ${wf.confN} confident calls). Treat its ${pct1(p)} as noise. Use the risk numbers below; take direction from a setup that passed BACKTEST.` };
+    const dn = sim.pDn.at(-1), up = sim.pUp.at(-1);
+    if (p > 0.55) return { cls: "up", head: stressed ? "BUY BIAS · HIGH-RISK REGIME" : "BUY BIAS", text: `${pct1(p)} chance of a higher close in ${wf.h} days, from a model with a proven out-of-sample record. ${stressed ? "The market is in its stressed regime: use half size. " : ""}Chance of touching support ${fmt(lv.support)} within 20 days: ${pct1(dn, 0)}. Put the stop below it.` };
+    if (p < 0.45) return { cls: "down", head: stressed ? "SELL BIAS · HIGH-RISK REGIME" : "SELL BIAS", text: `Only ${pct1(p)} chance of a higher close in ${wf.h} days. Avoid new longs; shorts only where you can short. Chance of touching resistance ${fmt(lv.resistance)} within 20 days: ${pct1(up, 0)}.` };
+    return { cls: "amber", head: "NEUTRAL", text: `${pct1(p)} chance of a higher close in ${wf.h} days: inside the 45–55% no-trade zone. The model has an edge on this coin, but not today.` };
+  }
+
+  let quantRun = 0, lastQuant = null;
+  async function runQuant() {
+    const seq = ++quantRun;
+    const sym = normalize($("qSym").value || bareTicker(symbol)) || symbol;
+    $("qSym").value = bareTicker(sym);
+    const H = +$("qH").value, shorts = $("qShort").checked;
+    msgIn("qOut", `Loading ${bareTicker(sym)} daily history…`);
+    let d;
+    try { d = await getCandles(sym, "D", 2000); } catch { d = { error: "Couldn't load price history. Check your connection." }; }
+    if (seq !== quantRun) return;
+    if (d.error) return msgIn("qOut", d.error.replace("For stocks, use tradingview/terminal_strategy.pine on TradingView.", "The quant models need long daily history, so they cover crypto on the free plan."));
+    if (d.c.length < 900) return msgIn("qOut", `Only ${d.c.length} days of history: the models need at least 900 (500 to train, the rest to prove themselves). Pick a coin with more history.`);
+    msgIn("qOut", `Fitting GARCH, the regime model and the walk-forward probability model on ${d.c.length.toLocaleString()} days… (a few seconds)`);
+    await new Promise((r) => setTimeout(r, 30));
+    if (seq !== quantRun) return;
+    const c = d.c, n = c.length, r = [];
+    for (let i = 1; i < n; i++) r.push(Math.log(c[i] / c[i - 1]));
+    const r1 = r.slice(-1500), gm = Q.garch(r1), hm = Q.hmm2(r1);
+    const hurst = Q.hurst(r), vr5 = Q.varianceRatio(r, 5), vr20 = Q.varianceRatio(r, 20), hl = Q.halfLife(c.map(Math.log));
+    const wf = Q.walkForward(c, d.v, H, { shorts });
+    if (seq !== quantRun) return;
+    const lv = {
+      support: +$("qSup").value || Math.min(...d.l.slice(-21, -1)),
+      resistance: +$("qRes").value || Math.max(...d.h.slice(-21, -1)),
+    };
+    const sim = Q.simulate(c, gm, 20, lv, 5000);
+    const liq = Q.liquidityDaily(c, d.v);
+    const book = await fetchBook(sym);
+    if (seq !== quantRun) return;
+    const slip = book ? [1e4, 1e5, 1e6].map((u) => ({ u, ...Q.slippage(book, u) })) : null;
+    const bk = bookStats(book);
+    const kyle = flow.sym === sym ? Q.kyleLambda(flow.trades) : NaN;
+
+    const call = quantCall(wf, hm, sim, lv);
+    const ban = el("div", "qcall " + call.cls);
+    ban.append(el("b", "", call.head), el("div", "", call.text), probBar(wf.now, `P(higher in ${H} days)`));
+
+    const scroll = (t) => { const x = el("div"); x.style.overflowX = "auto"; x.append(t); return x; };
+    const table = (head, rows) => {
+      const t = el("table", "t"), hr = el("tr");
+      head.forEach((x, i) => hr.append(th(x, i > 0)));
+      t.append(hr);
+      for (const row of rows) { const tr = el("tr"); row.forEach(([v, cls], i) => tr.append(td(v, (i ? "r " : "") + (cls || "")))); t.append(tr); }
+      return scroll(t);
+    };
+    const h = (t) => el("div", "amber tl-h", t);
+
+    // 1. Probability model record
+    const mrec = table(["OUT-OF-SAMPLE RECORD", "VALUE", "WHAT IT MEANS"], [
+      [["Days scored"], [wf.n.toLocaleString()], ["Each prediction made by a model trained only on earlier days"]],
+      [["Brier skill vs base rate"], [(wf.skill * 100).toFixed(2) + "%", wf.skill > 0 ? "up" : "down"], ["Above 0 = better probabilities than always guessing the average"]],
+      [["Hit rate on confident calls"], [`${pct1(wf.hitRate)} of ${wf.confN}`, wf.hitRate > 0.52 ? "up" : "down"], ["Calls above 55% or below 45%; a coin flip scores 50%"]],
+      [["Strategy Sharpe (after 0.2% costs)"], [isNum(wf.sharpe) ? wf.sharpe.toFixed(2) : "—", wf.sharpe > wf.bhSharpe ? "up" : "down"], [`Buy and hold: ${isNum(wf.bhSharpe) ? wf.bhSharpe.toFixed(2) : "—"}`]],
+      [["Strategy return / max drawdown"], [`${pct1(Math.exp(wf.ret) - 1, 0)} / ${pct1(Math.exp(wf.maxDD) - 1, 0)}`], [`Buy and hold: ${pct1(Math.exp(wf.bhRet) - 1, 0)}`]],
+      ...wf.buckets.map((b) => [[`Calibration: said ${b.lo === 0 ? "< 45%" : b.hi > 1 ? "> 55%" : "45–55%"}`], [b.n ? `${pct1(b.up)} went up (n ${b.n})` : "—"], [b.n ? `Average forecast ${pct1(b.p)}; a well-calibrated model matches` : ""]]),
+      [["Verdict"], [wf.edge ? "EDGE" : "NO EDGE", wf.edge ? "up" : "down"], ["Needs positive skill, > 52% hit rate and 100+ confident calls"]],
+    ]);
+
+    // 2. Breakdown / breakout odds
+    const odds = table(["WITHIN", "TOUCH SUPPORT " + fmt(lv.support), "TOUCH RESISTANCE " + fmt(lv.resistance)], [5, 10, 20].map((k) => [[`${k} days`], [pct1(sim.pDn[k - 1], 0), sim.pDn[k - 1] > 0.5 ? "down" : ""], [pct1(sim.pUp[k - 1], 0), sim.pUp[k - 1] > 0.5 ? "up" : ""]]));
+    const distS = Math.log(c.at(-1) / lv.support) / Math.sqrt(gm.next), distR = Math.log(lv.resistance / c.at(-1)) / Math.sqrt(gm.next);
+
+    // 3. Volatility and regime
+    const volNow = Math.sqrt(gm.next * 365), volLong = Math.sqrt(gm.uncond * 365), pS = hm.pStressed.at(-1);
+    const volT = table(["VOLATILITY & REGIME", "VALUE", "READING"], [
+      [["GARCH volatility, next day (annualised)"], [pct1(volNow, 0), volNow > volLong * 1.2 ? "down" : volNow < volLong * 0.8 ? "up" : ""], [`Long-run ${pct1(volLong, 0)}; ${volNow > volLong * 1.1 ? "above normal: expect bigger swings" : volNow < volLong * 0.9 ? "below normal: quiet spells tend to end with a jump" : "about normal"}`]],
+      [["Expected daily move (1σ)"], [pct1(Math.sqrt(gm.next), 2)], [`About ${fmt(c.at(-1) * Math.sqrt(gm.next))} on today's price`]],
+      [["GARCH α / β / persistence"], [`${gm.alpha.toFixed(3)} / ${gm.beta.toFixed(3)} / ${gm.persistence.toFixed(3)}`], [`Shocks fade with a half-life of ${isFinite(gm.halfLife) ? gm.halfLife.toFixed(0) + " days" : "very long"}`]],
+      [["Regime now (hidden Markov model)"], [`${pct1(pS, 0)} stressed`, pS > 0.5 ? "down" : "up"], [`Calm: σ ${pct1(hm.sd[hm.calm], 1)}/day; stressed: σ ${pct1(hm.sd[hm.stressed], 1)}/day`]],
+      [["Regime persistence"], [`calm ${Math.round(1 / (1 - hm.stayCalm))}d · stressed ${Math.round(1 / (1 - hm.stayStressed))}d`], ["Average length of each regime once it starts"]],
+    ]);
+
+    // 4. Market character
+    const charT = table(["MARKET CHARACTER", "VALUE", "READING"], [
+      [["Hurst exponent (bias-corrected R/S)"], [hurst.toFixed(3), hurst > 0.55 ? "up" : hurst < 0.45 ? "down" : ""], [hurst > 0.55 ? "Trending: moves tend to continue. Favour breakouts and pullbacks in trend" : hurst < 0.45 ? "Mean-reverting: moves tend to snap back. Favour fading extremes" : "Close to 0.5: close to a random walk"]],
+      [["Variance ratio, 5 days"], [`${vr5.vr.toFixed(2)} (p ${vr5.p < 0.001 ? "< 0.001" : vr5.p.toFixed(3)})`, vr5.p < 0.05 ? (vr5.vr > 1 ? "up" : "down") : ""], [vr5.p < 0.05 ? (vr5.vr > 1 ? "Significant short-term momentum" : "Significant short-term mean reversion") : "Not significantly different from a random walk"]],
+      [["Variance ratio, 20 days"], [`${vr20.vr.toFixed(2)} (p ${vr20.p < 0.001 ? "< 0.001" : vr20.p.toFixed(3)})`, vr20.p < 0.05 ? (vr20.vr > 1 ? "up" : "down") : ""], [vr20.p < 0.05 ? (vr20.vr > 1 ? "Significant monthly momentum" : "Significant monthly mean reversion") : "Not significantly different from a random walk"]],
+      [["Mean-reversion half-life (vs 50-day average)"], [isFinite(hl) ? hl.toFixed(1) + " days" : "none"], ["How long a stretch away from the average takes to halve"]],
+    ]);
+
+    // 5. Liquidity
+    const liqRows = [
+      [["Average daily traded value (30 days)"], ["$" + fmtBig(liq.dollarVol)], ["On Binance only; the whole market trades more"]],
+      [["Amihud illiquidity"], [isNum(liq.amihud) ? liq.amihud.toExponential(2) : "—"], ["Price move per $1M traded; lower is more liquid"]],
+      [["Roll implied spread"], [isNum(liq.rollSpread) ? (liq.rollSpread * 1e4).toFixed(1) + " bps" : "n/a"], ["From daily price bounce; n/a when prices trend"]],
+    ];
+    if (bk) liqRows.push([["Live bid–ask spread"], [bk.spreadBps.toFixed(2) + " bps"], [`Depth within 1%: $${fmtBig(bk.b1.bid)} bids · $${fmtBig(bk.b1.ask)} asks (imbalance ${bk.b1.imb.toFixed(0)}%)`]]);
+    if (slip) for (const s of slip) liqRows.push([[`Market order cost, $${fmtBig(s.u)}`], [`buy ${isNum(s.buy) ? s.buy.toFixed(1) + " bps" : "beyond book"} · sell ${isNum(s.sell) ? s.sell.toFixed(1) + " bps" : "beyond book"}`, (s.buy > 20 || !isNum(s.buy)) ? "down" : ""], ["Walks the live order book from the mid price"]]);
+    liqRows.push([["Kyle's lambda (price impact)"], [isNum(kyle) ? kyle.toFixed(2) + " bps per $1M" : "open ORDER FLOW first"], ["How far net aggressive buying moves the price, from live trades"]]);
+    const liqT = table(["LIQUIDITY", "VALUE", "READING"], liqRows);
+
+    // 6. Sizing
+    const acct = accountSize(), tgt = 0.15, wt = tgt / volNow;
+    const p = wf.hitRate, b = wf.avgL > 0 ? wf.avgW / wf.avgL : NaN, kelly = isNum(b) ? p - (1 - p) / b : NaN;
+    const sizeT = table(["POSITION SIZE", "VALUE", "HOW"], [
+      [["Volatility target (15% a year)"], [`${pct1(Math.min(wt, 2), 0)} of account${acct ? " = " + fmtUsd(acct * Math.min(wt, 2)) : ""}`], ["Smaller in wild markets, larger in calm ones, so risk stays steady"]],
+      [["Quarter Kelly from the model's record"], [wf.edge && kelly > 0 ? pct1(kelly / 4, 1) + " of account" : "0% (no proven edge)", wf.edge && kelly > 0 ? "up" : "down"], [isNum(b) ? `Win rate ${pct1(p)}, payoff ${b.toFixed(2)}:1. Full Kelly is too aggressive for noisy estimates` : ""]],
+      [["99% one-day loss (GARCH)"], [pct1(TAIL.zInv(0.99) * Math.sqrt(gm.next), 1)], ["Bell-curve figure; TAIL RISK shows how much worse fat tails make it"]],
+    ]);
+
+    const cv1 = tailCanvas(260, "Price cone"), cv2 = tailCanvas(220, "Out-of-sample equity"), cv3 = tailCanvas(200, "Volatility and regime");
+    $("qOut").replaceChildren(
+      ban,
+      el("div", "muted", `${bareTicker(sym)} · ${n.toLocaleString()} days to ${new Date(d.t.at(-1)).toLocaleDateString()} · ${d.src} · price ${fmt(c.at(-1))}`),
+      h(`1 · BUY / SELL PROBABILITY (logistic model, walk-forward, ${H}-day horizon)`), mrec,
+      el("p", "fine", "Inputs: 1-, 3- and 12-month momentum scaled by volatility, distance from the 20-day average, RSI, volatility regime, volume surprise and distance to the 20-day high and low. The model is re-trained every 20 days on past data only, and trades at the daily close."),
+      h("OUT-OF-SAMPLE EQUITY"), cv2,
+      h("2 · CHANCE OF BREAKDOWN / BREAKOUT (5,000 simulated paths)"), odds,
+      el("p", "fine", `Support and resistance default to the 20-day low and high. Support is ${distS.toFixed(1)} daily σ away, resistance ${distR.toFixed(1)}. Paths use GARCH volatility and this coin's own past shocks (filtered historical simulation), with no drift: these are the odds of reaching the level, not a forecast of direction.`),
+      cv1,
+      h("3 · VOLATILITY & REGIME (GARCH(1,1) + 2-state hidden Markov model)"), volT, cv3,
+      h("4 · TREND OR MEAN REVERSION?"), charT,
+      h("5 · LIQUIDITY"), liqT,
+      h("6 · POSITION SIZE"), sizeT,
+      el("p", "fine", "Information, not advice. Every model here is fitted to the past. The walk-forward record and the calibration rows are the honest test: if they don't hold up, neither does the probability."));
+    drawCone(cv1, c, sim, lv);
+    drawEquity(cv2, wf, d.t);
+    drawRegime(cv3, gm, hm, d.t[n - r1.length]);
+    lastQuant = { sym, H, p: wf.now, edge: wf.edge, call: call.head, stressed: pS > 0.5, pDn: sim.pDn.at(-1), pUp: sim.pUp.at(-1), hurst, volNow, at: Date.now() };
+  }
+  $("qForm").addEventListener("submit", (e) => { e.preventDefault(); runQuant(); });
+
   // Hooks into symbol changes and views.
   function afterSymbol() {
     lastNote = null;
@@ -4612,6 +5160,7 @@
     if (v === "chart") { loadChart2(); renderCwQuote(); renderLists(); renderEvents(); }
     if (v === "flow") enterFlow();
     if (v === "today") renderToday();
+    if (v === "quant" && !$("qSym").value) { $("qSym").value = binSym(symbol) ? bareTicker(symbol) : "BTCUSDT"; runQuant(); }
     if (v === "tail" && !$("tlSym").value) { $("tlSym").value = binSym(symbol) ? bareTicker(symbol) : "BTCUSDT"; runTail(); }
     if (v === "scan") { renderScan(); if (Date.now() - scanAt > 50_000) runScan(false); }
     if (v === "bt" && !$("btSym").value) $("btSym").value = binSym(symbol) ? bareTicker(symbol) : "BTCUSDT";
