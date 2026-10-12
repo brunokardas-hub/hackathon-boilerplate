@@ -1,0 +1,9 @@
+anthropic>=1.13,<2
+twilio>=9.12,<10
+flask>=3.1,<4
+apscheduler>=3.11,<4
+google-api-python-client>=2.200,<3
+google-auth-oauthlib>=1.5,<2
+python-dotenv>=1.2,<2
+pydantic>=2.14,<3
+pytest>=8

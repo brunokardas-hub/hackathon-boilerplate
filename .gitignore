@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Jarvis secrets & local state
+credentials.json
+token.json
+jarvis_state.json
+plan.md
