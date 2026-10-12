@@ -329,6 +329,7 @@
   .tline.setup .tbtn { margin: 0 0 0 auto; padding: 1px 8px; }
   .process.compact { grid-template-columns: minmax(0, 1fr); border: 0; }
   .setupcard { border-color: var(--amber); }
+  .tl-h { font-weight: 700; margin: 16px 0 4px; letter-spacing: .04em; }
   .mcbox { border: 1px solid var(--line); border-left: 3px solid var(--amber); padding: 8px 10px; margin: 10px 0; display: flex; flex-direction: column; gap: 3px; }
   #btApproved { padding: 6px 8px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 
@@ -396,6 +397,7 @@
   <button data-cmd="FLOW" data-view="flow">ORDER FLOW</button>
   <button data-cmd="PORT" data-view="port">PORTFOLIO</button>
   <button data-cmd="BT" data-view="bt">BACKTEST</button>
+  <button data-cmd="TAIL" data-view="tail">TAIL RISK</button>
   <button data-cmd="JRNL" data-view="jrnl">JOURNAL</button>
   <button data-cmd="ALRT" data-view="tools">ALERTS</button>
   <button data-cmd="AI" data-view="ai">AI ANALYST</button>
@@ -725,6 +727,23 @@
   </div>
 </section>
 
+<section class="view" id="v-tail">
+  <div class="full">
+    <div class="subtabs"><span class="title">TAIL · HILL ESTIMATOR VS GAUSSIAN VaR</span><span class="muted" style="margin-left:auto">Daily crypto history from Binance</span></div>
+    <form class="form" id="tlForm" autocomplete="off">
+      <label>Symbol<input id="tlSym" placeholder="BTCUSD"></label>
+      <label>History<select id="tlDays"><option value="1000">1,000 days</option><option value="2000">2,000 days</option><option value="3000" selected>3,000 days</option><option value="5000">5,000 days</option></select></label>
+      <label>VaR window<select id="tlWin"><option value="250" selected>250 days (1 year)</option><option value="500">500 days (2 years)</option></select></label>
+      <label>EVT tail share<select id="tlKfrac"><option value="0.05" selected>Top 5% of losses</option><option value="0.1">Top 10% of losses</option></select></label>
+      <label>Hill k (blank = auto)<input id="tlK" type="number" min="10" step="1" placeholder="auto"></label>
+      <button type="submit">▶ RUN</button>
+    </form>
+    <div class="scroll" style="flex:1;overflow:auto;padding:10px" id="tlOut">
+      <div class="msgline">Measures how fat the loss tail is (Hill tail index α) and tests whether a bell-curve (Gaussian) VaR would have held up, day by day, against Historical and Hill/EVT VaR. Pick a coin and press RUN.</div>
+    </div>
+  </div>
+</section>
+
 <section class="view" id="v-jrnl">
   <div class="full">
     <div class="subtabs" id="jrTabs">
@@ -870,6 +889,7 @@
       <tr><td>TODAY</td><td>Home screen: mood, risk today, open trades, best setups, movers, alerts, earnings, your process</td></tr>
       <tr><td>Keys 1–9, 0</td><td>Switch screens in menu order (when not typing); / jumps to the orange bar</td></tr>
       <tr><td>SCAN</td><td>Setup scanner over My list: entry, ATR stop, 2R target, grade; optional alerts on new A-grade setups</td></tr>
+      <tr><td>TAIL · TAIL ETHUSDT · VAR · HILL</td><td>Tail risk: Hill tail index, Gaussian vs Historical vs EVT VaR, rolling Kupiec backtest</td></tr>
       <tr><td>BT · BACKTEST</td><td>Test a setup on years of history with costs, in-sample vs out-of-sample</td></tr>
       <tr><td>FLOW</td><td>Order flow: buy vs sell pressure, large trades, order book walls, 13F holders and market makers</td></tr>
       <tr><td>RES</td><td>Earnings calendar, analyst ratings, insider trades</td></tr>
@@ -1168,6 +1188,11 @@
     if (["RES", "ERN", "ANR", "INS", "EE"].includes(c)) return showView("res");
     if (["FLOW", "MM", "ORDERFLOW", "ORDER FLOW", "BOOK"].includes(c)) return showView("flow");
     if (["BT", "BACKTEST", "TEST"].includes(c)) return showView("bt");
+    if ((m = c.match(/^(?:TAIL|VAR|HILL)(?: (\S+))?$/))) {
+      if (m[1]) $("tlSym").value = m[1];
+      showView("tail");
+      return runTail();
+    }
     if (["SCAN", "SCANNER", "SETUPS"].includes(c)) return showView("scan");
     if (["TODAY", "HOME"].includes(c)) return showView("today");
     if (["PORT", "PF", "PORTFOLIO"].includes(c)) return showView("port");
@@ -4194,7 +4219,7 @@
   const CMDS = [["TODAY", "home screen"], ["MAIN", "main screen"], ["CHARTS", "big chart + list"], ["GRID 4", "multi-chart"], ["SCAN", "setup scanner"], ["BACKTEST", "test a setup"], ["JRNL", "trade journal"],
     ["FLOW", "order flow"], ["RES", "research"], ["PORT", "portfolio"], ["ALRT", "alerts & calculator"], ["HEAT", "heatmap"], ["EQS", "screener"], ["AI", "AI analyst"], ["BRIEF", "AI morning brief"],
     ["ASK ", "ask the AI"], ["ADD ", "add to My list"], ["DEL ", "remove from My list"], ["ALERT BTCUSD > ", "price alert"], ["LOG LONG ", "log a trade"], ["PAPER LONG ", "paper trade"], ["CLOSE ", "close a trade"], ["HALF ", "close half"],
-    ["BUY ", "portfolio buy"], ["SELL ", "portfolio sell"], ["MAX", "full-screen chart"], ["SETTINGS", "keys & backup"], ["HELP", "all commands"]];
+    ["TAIL ", "tail risk (Hill, VaR)"], ["BUY ", "portfolio buy"], ["SELL ", "portfolio sell"], ["MAX", "full-screen chart"], ["SETTINGS", "keys & backup"], ["HELP", "all commands"]];
   function fillCmdList() {
     const opts = [...CMDS.map(([v, l]) => [v, l]), ...myList.map((s) => [bareTicker(s), "load " + s])];
     $("cmdList").replaceChildren(...opts.map(([v, l]) => { const o = el("option"); o.value = v; o.label = l; return o; }));
@@ -4236,13 +4261,331 @@
     ];
   }
 
-  const VERSION = "2026.10.09-b";
+  const VERSION = "2026.10.12-tail";
   function whatsNew() {
     const seen = store.get("term.version");
     store.set("term.version", VERSION);
     if (!seen || seen === VERSION) return;
-    toast("Updated", "Faster start (MAIN's widgets load only when you open MAIN), lighter when the tab is hidden, an error shield, and a setup checklist on TODAY.");
+    toast("New: TAIL RISK screen", "Hill tail index and a day-by-day test of Gaussian vs Historical vs Hill/EVT VaR. Open it from the menu or type TAIL BTCUSD.");
   }
+
+  // ───────────────────────── Tail risk: Hill estimator vs Gaussian VaR ─────────────────────────
+  // Losses are negative daily log returns; VaR and ES are positive loss sizes.
+  const TAIL = {
+    // Inverse standard normal CDF (Acklam's rational approximation, |error| < 1.2e-9).
+    zInv(p) {
+      const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239];
+      const b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572];
+      const c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+      const d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+      const lo = 0.02425;
+      if (p < lo) { const q = Math.sqrt(-2 * Math.log(p)); return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+      if (p > 1 - lo) return -TAIL.zInv(1 - p);
+      const q = p - 0.5, r = q * q;
+      return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+    },
+    // Complementary error function (Numerical Recipes erfcc, |error| < 1.2e-7).
+    erfc(x) {
+      const z = Math.abs(x), t = 1 / (1 + 0.5 * z);
+      const r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
+      return x >= 0 ? r : 2 - r;
+    },
+    normSf: (z) => 0.5 * TAIL.erfc(z / Math.SQRT2), // P(Z > z)
+    normPdf: (z) => Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI),
+    chi2Sf1: (x) => (x > 0 ? TAIL.erfc(Math.sqrt(x / 2)) : 1), // P(χ²₁ > x)
+    moments(r) {
+      const n = r.length, mu = r.reduce((s, x) => s + x, 0) / n;
+      let m2 = 0, m3 = 0, m4 = 0;
+      for (const x of r) { const e = x - mu; m2 += e * e; m3 += e * e * e; m4 += e * e * e * e; }
+      m2 /= n; m3 /= n; m4 /= n;
+      const skew = m3 / m2 ** 1.5, kurt = m4 / (m2 * m2) - 3;
+      const jb = (n / 6) * (skew * skew + (kurt * kurt) / 4); // Jarque–Bera, χ²₂ under normality
+      return { n, mu, sd: Math.sqrt((m2 * n) / (n - 1)), skew, kurt, jb, jbP: Math.exp(-jb / 2) };
+    },
+    // Hill estimates α̂(k) for k = 1..kMax from losses sorted largest first:
+    // α̂(k) = 1 / mean(ln X(i) − ln X(k+1)), i = 1..k. Needs X(k+1) > 0.
+    hillPath(desc, kMax) {
+      const out = [];
+      let s = 0;
+      for (let k = 1; k <= kMax && k < desc.length && desc[k] > 0; k++) {
+        s += Math.log(desc[k - 1]);
+        const h = s / k - Math.log(desc[k]);
+        out.push(h > 0 ? 1 / h : NaN);
+      }
+      return out; // out[k-1] = α̂(k)
+    },
+    // Picks k where α̂ is most stable within 2–6% of the sample. Larger k pulls in the body of the
+    // distribution and biases α̂ down (clear on Student-t data), so the search stops at 6%.
+    autoK(path, n) {
+      const lo = Math.max(20, Math.floor(n * 0.02)), hi = Math.min(path.length, Math.max(lo + 10, Math.floor(n * 0.06))), w = Math.max(5, Math.floor(n * 0.01));
+      let best = Math.min(path.length, Math.max(lo, Math.floor(n * 0.05))), bestSd = Infinity;
+      for (let k = lo; k + w <= hi; k++) {
+        const seg = path.slice(k - 1, k - 1 + w).filter(Number.isFinite);
+        if (seg.length < w) continue;
+        const m = seg.reduce((a, b) => a + b, 0) / seg.length, sd = Math.sqrt(seg.reduce((a, b) => a + (b - m) ** 2, 0) / seg.length) / m;
+        if (sd < bestSd) { bestSd = sd; best = k + (w >> 1); }
+      }
+      return best;
+    },
+    // VaR and ES at confidence p (e.g. 0.99) for the three methods, from a sample of returns.
+    gaussian(mu, sd, p) { const z = TAIL.zInv(p); return { var: z * sd - mu, es: (sd * TAIL.normPdf(z)) / (1 - p) - mu }; },
+    historical(lossDesc, p) {
+      const n = lossDesc.length, m = Math.max(1, Math.ceil(n * (1 - p)));
+      const v = lossDesc[m - 1]; // the m-th largest loss
+      return { var: v, es: lossDesc.slice(0, m).reduce((a, b) => a + b, 0) / m };
+    },
+    // Weissman extrapolation from the Hill fit: VaR = X(k+1)·(k / (n(1−p)))^(1/α); ES = VaR·α/(α−1) for α > 1.
+    evt(lossDesc, k, alpha, p) {
+      const n = lossDesc.length, u = lossDesc[k];
+      if (!(u > 0) || !(alpha > 0)) return { var: NaN, es: NaN };
+      const v = u * Math.pow(k / (n * (1 - p)), 1 / alpha);
+      return { var: v, es: alpha > 1 ? (v * alpha) / (alpha - 1) : Infinity };
+    },
+    // Kupiec proportion-of-failures test: x breaches in T days against an expected rate q = 1 − p.
+    kupiec(x, T, q) {
+      if (!T) return { lr: NaN, p: NaN };
+      const ph = x / T;
+      const ll0 = (T - x) * Math.log(1 - q) + x * Math.log(q);
+      const ll1 = (x > 0 && x < T) ? (T - x) * Math.log(1 - ph) + x * Math.log(ph) : 0;
+      const lr = Math.max(0, -2 * (ll0 - ll1));
+      return { lr, p: TAIL.chi2Sf1(lr) };
+    },
+    // Rolling out-of-sample backtest: each day's VaR is fitted only on the W days before it.
+    backtest(r, W, kFrac, levels) {
+      const res = levels.map((p) => ({ p, rows: { gauss: [], hist: [], evt: [] } }));
+      const out = { days: [], loss: [], var: levels.map(() => ({ gauss: [], hist: [], evt: [] })), res };
+      const k = Math.max(5, Math.round(W * kFrac));
+      let s = 0, s2 = 0;
+      for (let i = 0; i < W; i++) { s += r[i]; s2 += r[i] * r[i]; }
+      for (let t = W; t < r.length; t++) {
+        const mu = s / W, sd = Math.sqrt(Math.max(0, (s2 - W * mu * mu) / (W - 1)));
+        const lossDesc = r.slice(t - W, t).map((x) => -x).sort((a, b) => b - a);
+        const path = TAIL.hillPath(lossDesc, k);
+        const alpha = path[k - 1];
+        const L = -r[t];
+        out.days.push(t); out.loss.push(L);
+        levels.forEach((p, j) => {
+          const g = TAIL.gaussian(mu, sd, p).var, h = TAIL.historical(lossDesc, p).var, e = TAIL.evt(lossDesc, k, alpha, p).var;
+          out.var[j].gauss.push(g); out.var[j].hist.push(h); out.var[j].evt.push(e);
+          res[j].rows.gauss.push(L > g); res[j].rows.hist.push(L > h); res[j].rows.evt.push(Number.isFinite(e) ? L > e : false);
+        });
+        s += r[t] - r[t - W]; s2 += r[t] * r[t] - r[t - W] * r[t - W];
+      }
+      out.summary = res.map(({ p, rows }) => {
+        const T = rows.gauss.length, q = 1 - p, row = {};
+        for (const m of ["gauss", "hist", "evt"]) {
+          const x = rows[m].filter(Boolean).length, kp = TAIL.kupiec(x, T, q);
+          row[m] = { x, T, rate: x / T, ratio: x / T / q, lr: kp.lr, pval: kp.p, pass: kp.p >= 0.05 };
+        }
+        return { p, ...row };
+      });
+      out.k = k;
+      return out;
+    },
+    analyze(closes, opts) {
+      const r = [];
+      for (let i = 1; i < closes.length; i++) if (closes[i] > 0 && closes[i - 1] > 0) r.push(Math.log(closes[i] / closes[i - 1]));
+      const mom = TAIL.moments(r);
+      const lossDesc = r.map((x) => -x).sort((a, b) => b - a);
+      const kMax = Math.min(lossDesc.filter((x) => x > 0).length - 1, Math.floor(r.length * 0.25));
+      const path = TAIL.hillPath(lossDesc, kMax);
+      const k = opts.k && opts.k <= path.length ? opts.k : TAIL.autoK(path, r.length);
+      const alpha = path[k - 1], ci = [alpha - (1.96 * alpha) / Math.sqrt(k), alpha + (1.96 * alpha) / Math.sqrt(k)];
+      const levels = [0.99, 0.995];
+      const now = levels.map((p) => ({ p, gauss: TAIL.gaussian(mom.mu, mom.sd, p), hist: TAIL.historical(lossDesc, p), evt: TAIL.evt(lossDesc, k, alpha, p) }));
+      const bt = r.length > opts.window + 100 ? TAIL.backtest(r, opts.window, opts.kFrac, levels) : null;
+      return { r, mom, lossDesc, path, k, alpha, ci, now, bt, worst: lossDesc[0], worstSigma: (lossDesc[0] + mom.mu) / mom.sd };
+    },
+  };
+  // ───────────────────────── TAIL RISK screen ─────────────────────────
+  const TAIL_COL = { gauss: "#ff433d", hist: "#e6e6e6", evt: "#4af626" };
+  const TAIL_NAME = { gauss: "Gaussian", hist: "Historical", evt: "Hill / EVT" };
+  const pctTxt = (x, d = 2) => (isNum(x) ? (x * 100).toFixed(d) + "%" : x === Infinity ? "∞" : "—");
+  function tailCanvas(h, label) {
+    const cv = el("canvas");
+    cv.style.cssText = `width:100%;height:${h}px;display:block;margin:6px 0 2px`;
+    cv.setAttribute("aria-label", label);
+    return cv;
+  }
+  function ctx2d(cv) {
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth || 600, h = cv.clientHeight || 240;
+    cv.width = w * dpr; cv.height = h * dpr;
+    const g = cv.getContext("2d");
+    g.scale(dpr, dpr); g.font = "11px monospace"; g.clearRect(0, 0, w, h);
+    return { g, w, h };
+  }
+  function legend(g, x, y, items) {
+    for (const [txt, col] of items) {
+      g.fillStyle = col; g.fillRect(x, y - 8, 10, 3);
+      g.fillStyle = "#8c8c8c"; g.fillText(txt, x + 14, y - 4);
+      x += g.measureText(txt).width + 30;
+    }
+  }
+  // 1. Daily losses against each method's rolling 99% VaR; breaches highlighted.
+  function drawTailBacktest(cv, a, dates) {
+    const { g, w, h } = ctx2d(cv), bt = a.bt;
+    const padL = 48, padR = 8, padT = 22, padB = 18, n = bt.loss.length;
+    const sorted = [...bt.loss].sort((x, y) => x - y);
+    const cap = Math.max(sorted[Math.floor(n * 0.995)] * 1.25, ...bt.var[0].evt.filter(isNum), 0.01);
+    const X = (i) => padL + (i / (n - 1)) * (w - padL - padR), Y = (v) => padT + (1 - Math.min(v, cap) / cap) * (h - padT - padB);
+    g.strokeStyle = "#262626"; g.fillStyle = "#8c8c8c";
+    for (let k = 0; k <= 4; k++) { const v = (cap * k) / 4; g.beginPath(); g.moveTo(padL, Y(v)); g.lineTo(w - padR, Y(v)); g.stroke(); g.fillText((v * 100).toFixed(0) + "%", 4, Y(v) + 4); }
+    const bw = Math.max(1, (w - padL - padR) / n);
+    for (let i = 0; i < n; i++) {
+      const L = bt.loss[i];
+      if (L <= 0) continue;
+      const broke = L > bt.var[0].gauss[i];
+      g.fillStyle = broke ? "rgba(255,67,61,.9)" : "rgba(140,140,140,.45)";
+      g.fillRect(X(i), Y(L), bw, Y(0) - Y(L));
+      if (L > cap) { g.fillStyle = "#ff433d"; g.fillText("▲" + (L * 100).toFixed(0) + "%", Math.min(X(i) + 2, w - 40), padT - 4 + 12); }
+    }
+    for (const m of ["hist", "evt", "gauss"]) {
+      g.strokeStyle = TAIL_COL[m]; g.lineWidth = m === "gauss" ? 1.5 : 1; g.beginPath();
+      bt.var[0][m].forEach((v, i) => { if (!isNum(v)) return; i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v)); });
+      g.stroke();
+    }
+    g.lineWidth = 1; g.fillStyle = "#8c8c8c";
+    g.fillText(new Date(dates[bt.days[0] + 1]).toLocaleDateString(), padL, h - 4);
+    g.textAlign = "right"; g.fillText(new Date(dates[bt.days[n - 1] + 1]).toLocaleDateString(), w - padR, h - 4); g.textAlign = "left";
+    legend(g, padL, 14, [["Gaussian 99% VaR", TAIL_COL.gauss], ["Historical", TAIL_COL.hist], ["Hill/EVT", TAIL_COL.evt], ["red bars = Gaussian breached", "#ff433d"]]);
+  }
+  // 2. Log-log tail: empirical P(loss > x) vs the bell curve and the Hill power law.
+  function drawTailLogLog(cv, a) {
+    const { g, w, h } = ctx2d(cv), n = a.r.length, desc = a.lossDesc;
+    const m = Math.max(20, Math.floor(n * 0.25)), pts = [];
+    for (let i = 0; i < m && desc[i] > 0; i++) pts.push([desc[i], (i + 1) / n]);
+    const xMin = pts.at(-1)[0], xMax = desc[0] * 1.3, yMin = 0.5 / n, yMax = (m + 1) / n;
+    const padL = 48, padR = 8, padT = 22, padB = 30;
+    const lx = (x) => Math.log10(x), X = (x) => padL + ((lx(x) - lx(xMin)) / (lx(xMax) - lx(xMin))) * (w - padL - padR);
+    const Y = (p) => padT + (1 - (lx(p) - lx(yMin)) / (lx(yMax) - lx(yMin))) * (h - padT - padB);
+    g.strokeStyle = "#262626"; g.fillStyle = "#8c8c8c";
+    for (let e = Math.ceil(lx(yMin)); e <= Math.floor(lx(yMax)); e++) { const p = 10 ** e; g.beginPath(); g.moveTo(padL, Y(p)); g.lineTo(w - padR, Y(p)); g.stroke(); g.fillText(p >= 0.01 ? (p * 100) + "%" : p.toExponential(0), 2, Y(p) + 4); }
+    for (const t of [0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5]) if (t >= xMin && t <= xMax) { g.beginPath(); g.moveTo(X(t), padT); g.lineTo(X(t), h - padB); g.stroke(); g.fillText((t * 100) + "%", X(t) - 8, h - padB + 13); }
+    g.fillText("x: daily loss · y: share of days worse than x (both log scale)", Math.max(padL, w - padR - 470), h - 3);
+    // Gaussian tail
+    g.strokeStyle = TAIL_COL.gauss; g.lineWidth = 1.5; g.beginPath();
+    let started = false;
+    for (let i = 0; i <= 200; i++) {
+      const x = xMin * Math.pow(xMax / xMin, i / 200), p = TAIL.normSf((x + a.mom.mu) / a.mom.sd);
+      if (p < yMin) break;
+      started ? g.lineTo(X(x), Y(p)) : (g.moveTo(X(x), Y(p)), (started = true));
+    }
+    g.stroke();
+    // Hill power law from the threshold X(k+1)
+    const u = desc[a.k];
+    g.strokeStyle = TAIL_COL.evt; g.beginPath();
+    for (let i = 0; i <= 100; i++) {
+      const x = u * Math.pow(xMax / u, i / 100), p = (a.k / n) * Math.pow(x / u, -a.alpha);
+      if (p < yMin) break;
+      i ? g.lineTo(X(x), Y(p)) : g.moveTo(X(x), Y(p));
+    }
+    g.stroke(); g.lineWidth = 1;
+    g.fillStyle = "rgba(230,230,230,.85)";
+    for (const [x, p] of pts) { g.beginPath(); g.arc(X(x), Y(p), 2, 0, Math.PI * 2); g.fill(); }
+    legend(g, padL, 14, [["actual days", "#e6e6e6"], ["bell curve says", TAIL_COL.gauss], [`power law, α = ${a.alpha.toFixed(2)}`, TAIL_COL.evt]]);
+  }
+  // 3. Hill plot: α̂ against k with its 95% band; the chosen k is marked.
+  function drawHill(cv, a) {
+    const { g, w, h } = ctx2d(cv), path = a.path, K = path.length;
+    const padL = 36, padR = 8, padT = 22, padB = 18, yMax = 6;
+    const X = (k) => padL + ((k - 1) / (K - 1)) * (w - padL - padR), Y = (v) => padT + (1 - Math.min(Math.max(v, 0), yMax) / yMax) * (h - padT - padB);
+    g.strokeStyle = "#262626"; g.fillStyle = "#8c8c8c";
+    for (let v = 0; v <= yMax; v++) { g.beginPath(); g.moveTo(padL, Y(v)); g.lineTo(w - padR, Y(v)); g.stroke(); g.fillText(String(v), 6, Y(v) + 4); }
+    g.setLineDash([4, 4]); g.strokeStyle = "#555";
+    for (const v of [2, 4]) { g.beginPath(); g.moveTo(padL, Y(v)); g.lineTo(w - padR, Y(v)); g.stroke(); }
+    g.setLineDash([]);
+    g.fillStyle = "rgba(251,139,30,.15)"; g.beginPath();
+    for (let k = 10; k <= K; k++) { const v = path[k - 1]; g.lineTo(X(k), Y(v + (1.96 * v) / Math.sqrt(k))); }
+    for (let k = K; k >= 10; k--) { const v = path[k - 1]; g.lineTo(X(k), Y(v - (1.96 * v) / Math.sqrt(k))); }
+    g.closePath(); g.fill();
+    g.strokeStyle = "#fb8b1e"; g.lineWidth = 1.5; g.beginPath();
+    for (let k = 5; k <= K; k++) { const v = path[k - 1]; if (!isNum(v)) continue; k === 5 ? g.moveTo(X(k), Y(v)) : g.lineTo(X(k), Y(v)); }
+    g.stroke(); g.lineWidth = 1;
+    g.strokeStyle = "#4af626"; g.beginPath(); g.moveTo(X(a.k), padT); g.lineTo(X(a.k), h - padB); g.stroke();
+    g.fillStyle = "#4af626"; g.fillText(`k = ${a.k}, α̂ = ${a.alpha.toFixed(2)}`, Math.min(X(a.k) + 4, w - 130), padT + 12);
+    g.fillStyle = "#8c8c8c"; g.fillText("k (number of largest losses used) →", w - padR - 250, h - 3);
+    legend(g, padL, 14, [["α̂(k)", "#fb8b1e"], ["95% band", "rgba(251,139,30,.6)"], ["dashed: α = 2 and 4", "#555"]]);
+  }
+
+  function alphaReading(a) {
+    const [lo, hi] = a.ci;
+    if (hi < 2) return ["down", `α̂ ≈ ${a.alpha.toFixed(2)} (95% range ${lo.toFixed(2)}–${hi.toFixed(2)}): below 2, so even the variance may not be finite. Anything built on standard deviation (Gaussian VaR, Sharpe ratios, volatility targeting) understates the risk.`];
+    if (lo < 2) return ["down", `α̂ ≈ ${a.alpha.toFixed(2)} (95% range ${lo.toFixed(2)}–${hi.toFixed(2)}): close to 2, the point where variance stops being finite. Standard-deviation-based risk is unreliable here.`];
+    if (a.alpha < 4) return ["amber", `α̂ ≈ ${a.alpha.toFixed(2)} (95% range ${lo.toFixed(2)}–${hi.toFixed(2)}): between 2 and 4, so the variance exists but the kurtosis doesn't. Extreme days come far more often than a bell curve allows.`];
+    return ["up", `α̂ ≈ ${a.alpha.toFixed(2)} (95% range ${lo.toFixed(2)}–${hi.toFixed(2)}): above 4, a moderate tail. A bell curve is less wrong here, though still optimistic at 99%+.`];
+  }
+
+  let tailRun = 0;
+  async function runTail() {
+    const seq = ++tailRun;
+    const sym = normalize($("tlSym").value || bareTicker(symbol)) || symbol;
+    $("tlSym").value = bareTicker(sym);
+    const days = +$("tlDays").value, W = +$("tlWin").value, kFrac = +$("tlKfrac").value, kMan = parseInt($("tlK").value, 10) || 0;
+    msgIn("tlOut", `Loading ${days.toLocaleString()} days of ${bareTicker(sym)} history…`);
+    let d;
+    try { d = await getCandles(sym, "D", days); } catch { d = { error: "Couldn't load price history. Check your connection." }; }
+    if (seq !== tailRun) return;
+    if (d.error) return msgIn("tlOut", d.error.replace("For stocks, use tradingview/terminal_strategy.pine on TradingView.", "Tail risk needs daily history, so it covers crypto on the free plan."));
+    if (d.c.length < W + 150) return msgIn("tlOut", `Only ${d.c.length} days of history: the rolling backtest needs at least ${W + 150}. Pick a shorter window or a coin with more history.`);
+    const a = TAIL.analyze(d.c, { window: W, kFrac, k: kMan });
+    const s99 = a.bt.summary[0], g = s99.gauss, ev = s99.evt;
+    const broke = !g.pass && g.rate > 0.01;
+    const ban = el("div", "rulebar" + (broke ? "" : " soft"));
+    ban.append(el("b", "", broke ? `GAUSSIAN VaR BROKE ON ${bareTicker(sym)}: ` : `GAUSSIAN VaR HELD UP ON THIS SAMPLE: `),
+      broke ? `losses beat its 99% VaR on ${pctTxt(g.rate)} of ${g.T.toLocaleString()} test days, ${g.ratio.toFixed(2)}× the 1% it promises (Kupiec p ${g.pval < 0.001 ? "< 0.001" : "= " + g.pval.toFixed(3)}). Hill/EVT VaR: ${pctTxt(ev.rate)} of days, ${ev.pass ? "passes" : "fails"}.`
+        : `breaches on ${pctTxt(g.rate)} of ${g.T.toLocaleString()} test days (Kupiec p = ${g.pval.toFixed(3)}). ${g.T < 1500 ? "Short test periods often miss fat tails; try more history." : ""}`);
+    // Stats
+    const [rc, rt] = alphaReading(a), m = a.mom;
+    const stats = el("table", "t"), sh = el("tr");
+    [["DAYS", 1], ["DAILY σ", 1], ["SKEW", 1], ["EXCESS KURTOSIS", 1], ["JARQUE–BERA", 1], ["WORST DAY", 1], ["TAIL INDEX α̂", 1], ["k", 1]].forEach(([x, r]) => sh.append(th(x, r)));
+    const sr = el("tr");
+    sr.append(td(m.n.toLocaleString(), "r"), td(pctTxt(m.sd), "r"), td(m.skew.toFixed(2), "r " + signCls(m.skew)), td(m.kurt.toFixed(1), "r " + (m.kurt > 3 ? "down" : "")),
+      td(`${m.jb.toFixed(0)} (p ${m.jbP < 1e-4 ? "< 0.0001" : m.jbP.toFixed(3)})`, "r " + (m.jbP < 0.05 ? "down" : "up")), td(`−${pctTxt(a.worst, 1)} (${a.worstSigma.toFixed(1)}σ)`, "r down"),
+      td(`${a.alpha.toFixed(2)} [${a.ci[0].toFixed(2)}–${a.ci[1].toFixed(2)}]`, "r " + rc), td(String(a.k) + (kMan ? "" : " auto"), "r"));
+    stats.append(sh, sr);
+    // VaR today
+    const vt = el("table", "t"), vh = el("tr");
+    [["ONE-DAY LOSS"], ["VaR 99%", 1], ["ES 99%", 1], ["VaR 99.5%", 1], ["ES 99.5%", 1], ["LOSS ON $10,000 AT 99%", 1]].forEach(([x, r]) => vh.append(th(x, r)));
+    vt.append(vh);
+    for (const k of ["gauss", "hist", "evt"]) {
+      const tr = el("tr"), nm = td(TAIL_NAME[k]);
+      nm.style.color = TAIL_COL[k];
+      tr.append(nm, td(pctTxt(a.now[0][k].var), "r"), td(pctTxt(a.now[0][k].es), "r"), td(pctTxt(a.now[1][k].var), "r"), td(pctTxt(a.now[1][k].es), "r"), td(fmtUsd(10000 * (1 - Math.exp(-a.now[0][k].var))), "r"));
+      vt.append(tr);
+    }
+    // Backtest table
+    const bt = el("table", "t"), bh = el("tr");
+    [["METHOD"], ["LEVEL"], ["BREACHES", 1], ["RATE", 1], ["EXPECTED", 1], ["× EXPECTED", 1], ["KUPIEC LR", 1], ["p-VALUE", 1], ["RESULT"]].forEach(([x, r]) => bh.append(th(x, r)));
+    bt.append(bh);
+    for (const s of a.bt.summary) for (const k of ["gauss", "hist", "evt"]) {
+      const x = s[k], tr = el("tr"), nm = td(TAIL_NAME[k]);
+      nm.style.color = TAIL_COL[k];
+      tr.append(nm, td((s.p * 100).toFixed(1) + "%"), td(`${x.x} / ${x.T}`, "r"), td(pctTxt(x.rate), "r"), td(pctTxt(1 - s.p, 1), "r"), td(x.ratio.toFixed(2) + "×", "r " + (x.ratio > 1.5 ? "down" : "")),
+        td(x.lr.toFixed(2), "r"), td(x.pval < 0.001 ? "< 0.001" : x.pval.toFixed(3), "r"), td(x.pass ? "PASS" : "FAIL", x.pass ? "up" : "down"));
+      bt.append(tr);
+    }
+    const scroll = (t) => { const d2 = el("div"); d2.style.overflowX = "auto"; d2.append(t); return d2; };
+    const cv1 = tailCanvas(260, "Daily losses against each method's rolling 99% VaR"), cv2 = tailCanvas(260, "Log-log tail plot"), cv3 = tailCanvas(220, "Hill plot");
+    const h = (t) => el("div", "amber tl-h", t);
+    $("tlOut").replaceChildren(
+      ban,
+      el("div", "muted", `${bareTicker(sym)} · ${m.n.toLocaleString()} daily returns from ${new Date(d.t[0]).toLocaleDateString()} to ${new Date(d.t.at(-1)).toLocaleDateString()} · ${d.src}`),
+      h("SAMPLE"), scroll(stats), el("p", rc, rt),
+      h("VALUE AT RISK TODAY (fitted on the whole sample)"), scroll(vt),
+      el("p", "fine", "VaR: the loss a day should exceed only 1% (or 0.5%) of the time. ES (expected shortfall): the average loss on those worst days. Gaussian assumes a bell curve; Historical uses the worst past days as they are; Hill/EVT fits a power law to the largest losses and extrapolates."),
+      h(`ROLLING BACKTEST (each day's VaR fitted only on the previous ${W} days; EVT uses the top ${Math.round(kFrac * 100)}% = ${a.bt.k} losses)`), scroll(bt),
+      el("p", "fine", "Kupiec's test asks whether the breach rate is consistent with the promised 1% or 0.5%. p < 0.05 means the model is wrong for this coin. Too few breaches fails as well as too many: it means the model overstates risk."),
+      h("LOSSES VS 99% VaR"), cv1,
+      h("THE TAIL ON A LOG-LOG SCALE"), cv2, el("p", "fine", "On this scale a power-law tail is a straight line. The bell curve bends down and away: it says days like the worst ones should almost never happen."),
+      h("HILL PLOT"), cv3, el("p", "fine", `Each point is α̂ from the largest k losses. Too small a k is noisy; too large a k pulls in normal days and biases α̂ down. Auto picks the most stable stretch between 2% and 6% of the sample; type a k to override.`),
+      el("p", "fine", "Information, not advice. Tail estimates from a few thousand days carry wide error bars, as the band above shows."));
+    drawTailBacktest(cv1, a, d.t);
+    drawTailLogLog(cv2, a);
+    drawHill(cv3, a);
+    lastTail = { sym, alpha: a.alpha, ci: a.ci, g99: g.rate, evt99: ev.rate, gPass: g.pass, at: Date.now() };
+  }
+  let lastTail = null;
+  $("tlForm").addEventListener("submit", (e) => { e.preventDefault(); runTail(); });
 
   // Hooks into symbol changes and views.
   function afterSymbol() {
@@ -4269,6 +4612,7 @@
     if (v === "chart") { loadChart2(); renderCwQuote(); renderLists(); renderEvents(); }
     if (v === "flow") enterFlow();
     if (v === "today") renderToday();
+    if (v === "tail" && !$("tlSym").value) { $("tlSym").value = binSym(symbol) ? bareTicker(symbol) : "BTCUSDT"; runTail(); }
     if (v === "scan") { renderScan(); if (Date.now() - scanAt > 50_000) runScan(false); }
     if (v === "bt" && !$("btSym").value) $("btSym").value = binSym(symbol) ? bareTicker(symbol) : "BTCUSDT";
     if (v === "main") { renderLists(); if (mainDirty) loadMainWidgets(); }
