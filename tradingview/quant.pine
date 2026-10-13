@@ -1,0 +1,213 @@
+//@version=6
+// ─────────────────────────────────────────────────────────────────────────────
+// QUANT TERMINAL: GARCH volatility, hidden-Markov regime, breakdown/breakout odds,
+// Hurst exponent and variance ratio, with alerts.
+//
+// The website's QUANT screen fits these models to your symbol (section 10,
+// "SETTINGS FOR quant.pine"). Copy its numbers into the inputs below; the defaults
+// are typical for Bitcoin on the daily chart.
+//
+// Information, not advice. These are probabilities, not guarantees.
+// ─────────────────────────────────────────────────────────────────────────────
+indicator("Quant Terminal: volatility, regime, breakdown odds", shorttitle = "QUANT", overlay = false, max_bars_back = 600)
+
+grpG = "GARCH(1,1) (copy from the QUANT screen)"
+alphaG = input.float(0.09, "α (alpha)", minval = 0.0, maxval = 0.5, step = 0.001, group = grpG)
+betaG = input.float(0.86, "β (beta)", minval = 0.0, maxval = 0.999, step = 0.001, group = grpG)
+longSdPct = input.float(2.2, "Long-run σ per bar (%)", minval = 0.01, step = 0.01, group = grpG)
+
+grpH = "Regime model (copy from the QUANT screen)"
+calmPct = input.float(1.8, "Calm σ per bar (%)", minval = 0.01, step = 0.01, group = grpH)
+stressPct = input.float(3.2, "Stressed σ per bar (%)", minval = 0.01, step = 0.01, group = grpH)
+stayCalm = input.float(0.99, "Stay calm (probability)", minval = 0.5, maxval = 0.9999, step = 0.001, group = grpH)
+stayStress = input.float(0.97, "Stay stressed (probability)", minval = 0.5, maxval = 0.9999, step = 0.001, group = grpH)
+
+grpL = "Levels and display"
+lookback = input.int(20, "Support/resistance lookback (bars)", minval = 2, group = grpL)
+horizon = input.int(5, "Breakdown/breakout horizon (bars)", minval = 1, maxval = 100, group = grpL)
+barsYear = input.int(365, "Bars per year (365 crypto daily, 252 stocks daily)", minval = 1, group = grpL)
+hurstLen = input.int(400, "Hurst / variance-ratio window (bars)", minval = 100, maxval = 500, group = grpL)
+alertPct = input.float(50, "Alert when odds go above (%)", minval = 1, maxval = 99, group = grpL)
+showTable = input.bool(true, "Show table", group = grpL)
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+// Standard normal CDF (Abramowitz–Stegun 7.1.26, error < 1.5e-7).
+normCdf(float z) =>
+    float x = math.abs(z) / math.sqrt(2.0)
+    float t = 1.0 / (1.0 + 0.3275911 * x)
+    float erf = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * math.exp(-x * x)
+    z >= 0 ? 0.5 * (1.0 + erf) : 0.5 * (1.0 - erf)
+
+// Log-gamma (Lanczos), for the Anis–Lloyd expected R/S.
+lgamma(float x) =>
+    float tmp = x + 5.5
+    tmp -= (x + 0.5) * math.log(tmp)
+    float ser = 1.000000000190015
+    ser += 76.18009172947146 / (x + 1)
+    ser += -86.50532032941677 / (x + 2)
+    ser += 24.01409824083091 / (x + 3)
+    ser += -1.231739572450155 / (x + 4)
+    ser += 0.1208650973866179e-2 / (x + 5)
+    ser += -0.5395239384953e-5 / (x + 6)
+    -tmp + math.log(2.5066282746310005 * ser / x)
+
+expectedRS(int s) =>
+    float a = 0.0
+    for i = 1 to s - 1
+        a += math.sqrt(float(s - i) / float(i))
+    float g = s > 340 ? 1.0 / math.sqrt(s * math.pi / 2.0) : math.exp(lgamma((s - 1) / 2.0) - lgamma(s / 2.0)) / math.sqrt(math.pi)
+    (s - 0.5) / s * g * a
+
+// Bias-corrected Hurst exponent from rescaled range over a returns array.
+hurstOf(array<float> rs) =>
+    int n = array.size(rs)
+    array<float> xs = array.new_float()
+    array<float> ys = array.new_float()
+    int sz = 10
+    while sz <= n / 4.0
+        float sumRS = 0.0
+        int cnt = 0
+        int st = 0
+        while st + sz <= n
+            float m = 0.0
+            for j = st to st + sz - 1
+                m += array.get(rs, j)
+            m /= sz
+            float cum = 0.0
+            float mx = 0.0
+            float mn = 0.0
+            float ss = 0.0
+            for j = st to st + sz - 1
+                float d = array.get(rs, j) - m
+                cum += d
+                mx := math.max(mx, cum)
+                mn := math.min(mn, cum)
+                ss += d * d
+            float sd = math.sqrt(ss / sz)
+            if sd > 0
+                sumRS += (mx - mn) / sd
+                cnt += 1
+            st += sz
+        if cnt > 0
+            array.push(xs, math.log(sz))
+            array.push(ys, math.log(sumRS / cnt) - math.log(expectedRS(sz)))
+        sz := int(math.floor(sz * 1.5))
+    int k = array.size(xs)
+    float slope = na
+    if k >= 3
+        float xm = array.avg(xs)
+        float ym = array.avg(ys)
+        float sxy = 0.0
+        float sxx = 0.0
+        for i = 0 to k - 1
+            sxy += (array.get(xs, i) - xm) * (array.get(ys, i) - ym)
+            sxx += math.pow(array.get(xs, i) - xm, 2)
+        slope := sxx > 0 ? sxy / sxx : na
+    0.5 + slope
+
+// Lo–MacKinlay variance ratio VR(q) with its heteroskedasticity-robust z-statistic.
+varianceRatio(array<float> rs, int q) =>
+    int n = array.size(rs)
+    float m = array.avg(rs)
+    float v1 = 0.0
+    for i = 0 to n - 1
+        v1 += math.pow(array.get(rs, i) - m, 2)
+    float den = v1 * v1
+    v1 /= (n - 1)
+    float vq = 0.0
+    for t = q - 1 to n - 1
+        float s = 0.0
+        for j = 0 to q - 1
+            s += array.get(rs, t - j) - m
+        vq += s * s
+    vq /= q * (n - q + 1) * (1 - float(q) / n)
+    float vr = vq / v1
+    float theta = 0.0
+    for j = 1 to q - 1
+        float num = 0.0
+        for t = j to n - 1
+            num += math.pow(array.get(rs, t) - m, 2) * math.pow(array.get(rs, t - j) - m, 2)
+        theta += math.pow(2.0 * (q - j) / q, 2) * n * num / den
+    float z = (vr - 1) / math.sqrt(theta / n)
+    [vr, z]
+
+// ── Models ───────────────────────────────────────────────────────────────────
+float r = na(close[1]) ? 0.0 : math.log(close / close[1])
+float s2 = longSdPct * longSdPct / 10000.0
+float omega = s2 * (1 - alphaG - betaG)
+
+// GARCH: h is this bar's variance forecast made at the previous close; hNext is the next bar's.
+var float h = na
+h := na(h) ? s2 : omega + alphaG * r[1] * r[1] + betaG * h
+float hNext = omega + alphaG * r * r + betaG * h
+float phi = alphaG + betaG
+// Average variance per bar over the next N bars (GARCH term structure).
+float avgVar = s2 + (hNext - s2) * (phi < 1 ? (1 - math.pow(phi, horizon)) / ((1 - phi) * horizon) : 1)
+float volAnn = math.sqrt(hNext * barsYear)
+float volLong = math.sqrt(s2 * barsYear)
+
+// Regime: real-time (filtered) probability of the stressed state.
+var float pStress = 0.5
+float sdC = calmPct / 100.0
+float sdS = stressPct / 100.0
+float prior = pStress * stayStress + (1 - pStress) * (1 - stayCalm)
+float likeS = math.exp(-0.5 * math.pow(r / sdS, 2)) / sdS
+float likeC = math.exp(-0.5 * math.pow(r / sdC, 2)) / sdC
+pStress := (prior * likeS) / (prior * likeS + (1 - prior) * likeC)
+float stressPctNow = pStress * 100
+
+// Breakdown / breakout odds: barrier-hit probability with the Broadie–Glasserman
+// correction for daily (discrete) checks, using the GARCH volatility path, no drift.
+float support = ta.lowest(low, lookback)[1]
+float resistance = ta.highest(high, lookback)[1]
+float sdH = math.sqrt(avgVar * horizon)
+float bg = 0.5826 * math.sqrt(hNext)
+float pDown = close <= support ? 1.0 : math.min(1.0, 2 * normCdf((math.log(support / close) - bg) / sdH))
+float pUp = close >= resistance ? 1.0 : math.min(1.0, 2 * (1 - normCdf((math.log(resistance / close) + bg) / sdH)))
+
+// Hurst and variance ratio on the last bar only (they loop over the whole window).
+var array<float> rets = array.new_float()
+array.push(rets, r)
+if array.size(rets) > hurstLen
+    array.shift(rets)
+float hurst = na
+float vr5 = na
+float vrZ = na
+if barstate.islast and array.size(rets) >= 100
+    hurst := hurstOf(rets)
+    [v, zz] = varianceRatio(rets, 5)
+    vr5 := v
+    vrZ := zz
+
+// ── Plots ────────────────────────────────────────────────────────────────────
+bgcolor(pStress > 0.5 ? color.new(color.red, 85) : na, title = "Stressed regime")
+plot(stressPctNow, "Stressed regime %", color = color.new(color.red, 0), style = plot.style_area, linewidth = 1)
+plot(pDown * 100, "Breakdown odds %", color = color.new(color.orange, 0), linewidth = 2)
+plot(pUp * 100, "Breakout odds %", color = color.new(color.lime, 0), linewidth = 2)
+hline(50, "50%", color = color.gray, linestyle = hline.style_dashed)
+
+if showTable and barstate.islast
+    var table tb = table.new(position.top_right, 2, 8, bgcolor = color.new(color.black, 10), border_width = 1, border_color = color.new(color.gray, 70))
+    txt = color.white
+    table.cell(tb, 0, 0, "QUANT", text_color = color.orange)
+    table.cell(tb, 1, 0, syminfo.ticker, text_color = color.orange)
+    table.cell(tb, 0, 1, "GARCH vol (next bar, yr)", text_color = txt)
+    table.cell(tb, 1, 1, str.tostring(volAnn * 100, "#.0") + "% (long-run " + str.tostring(volLong * 100, "#.0") + "%)", text_color = volAnn > volLong * 1.2 ? color.red : txt)
+    table.cell(tb, 0, 2, "Regime", text_color = txt)
+    table.cell(tb, 1, 2, (pStress > 0.5 ? "STRESSED " : "CALM ") + str.tostring(stressPctNow, "#") + "%", text_color = pStress > 0.5 ? color.red : color.lime)
+    table.cell(tb, 0, 3, "Touch support " + str.tostring(support, format.mintick) + " in " + str.tostring(horizon) + " bars", text_color = txt)
+    table.cell(tb, 1, 3, str.tostring(pDown * 100, "#") + "%", text_color = pDown > 0.5 ? color.red : txt)
+    table.cell(tb, 0, 4, "Touch resistance " + str.tostring(resistance, format.mintick) + " in " + str.tostring(horizon) + " bars", text_color = txt)
+    table.cell(tb, 1, 4, str.tostring(pUp * 100, "#") + "%", text_color = pUp > 0.5 ? color.lime : txt)
+    table.cell(tb, 0, 5, "Hurst (" + str.tostring(array.size(rets)) + " bars)", text_color = txt)
+    table.cell(tb, 1, 5, na(hurst) ? "—" : str.tostring(hurst, "#.000") + (hurst > 0.55 ? " trending" : hurst < 0.45 ? " mean-reverting" : " random walk"), text_color = txt)
+    table.cell(tb, 0, 6, "Variance ratio (5)", text_color = txt)
+    table.cell(tb, 1, 6, na(vr5) ? "—" : str.tostring(vr5, "#.00") + (math.abs(vrZ) > 1.96 ? (vr5 > 1 ? " momentum" : " mean reversion") : " not significant"), text_color = txt)
+    table.cell(tb, 0, 7, "Expected move per bar (1σ)", text_color = txt)
+    table.cell(tb, 1, 7, str.tostring(math.sqrt(hNext) * 100, "#.00") + "%", text_color = txt)
+
+// ── Alerts (TradingView runs these 24/7, even with the website closed) ───────
+alertcondition(ta.crossover(stressPctNow, 50), "Regime turned stressed", "{{ticker}}: the market switched to its stressed regime. Cut size, widen stops or stand aside.")
+alertcondition(ta.crossunder(stressPctNow, 50), "Regime calmed down", "{{ticker}}: the market is back in its calm regime.")
+alertcondition(ta.crossover(pDown * 100, alertPct), "Breakdown odds high", "{{ticker}}: odds of touching support within the horizon rose above your threshold.")
+alertcondition(ta.crossover(pUp * 100, alertPct), "Breakout odds high", "{{ticker}}: odds of touching resistance within the horizon rose above your threshold.")
