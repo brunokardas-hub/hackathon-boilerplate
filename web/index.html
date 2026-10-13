@@ -343,6 +343,15 @@
   .qprefs input { width: auto; }
   .qpine { background: #111; border: 1px solid var(--line); padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0; }
   .qcall .acts { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .botform { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; }
+  .botform label { display: flex; flex-direction: row; align-items: flex-start; gap: 6px; flex-wrap: nowrap; }
+  .botform input[type=checkbox] { flex: none; margin-top: 2px; }
+  .botform input[type=checkbox] { width: auto; }
+  .botform input[type=number], .botform select { width: 110px; margin-left: auto; }
+  .botsetups { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+  .botsetups label { gap: 4px; }
+  .botlog { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+  .botlog li { padding: 3px 8px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
   .qbar::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px dashed #8c8c8c; }
   .mcbox { border: 1px solid var(--line); border-left: 3px solid var(--amber); padding: 8px 10px; margin: 10px 0; display: flex; flex-direction: column; gap: 3px; }
   #btApproved { padding: 6px 8px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
@@ -413,6 +422,7 @@
   <button data-cmd="BT" data-view="bt">BACKTEST</button>
   <button data-cmd="TAIL" data-view="tail">TAIL RISK</button>
   <button data-cmd="QUANT" data-view="quant">QUANT</button>
+  <button data-cmd="BOT" data-view="bot">BOT</button>
   <button data-cmd="JRNL" data-view="jrnl">JOURNAL</button>
   <button data-cmd="ALRT" data-view="tools">ALERTS</button>
   <button data-cmd="AI" data-view="ai">AI ANALYST</button>
@@ -726,11 +736,13 @@
         <option value="pullback">Pullback to EMA20 in a trend</option>
         <option value="volspike">Volume spike with trend</option>
         <option value="score">Score crosses 70 / 30</option>
+        <option value="ribbon">EMA ribbon cross + RSI</option>
+        <option value="ribbonpb">EMA ribbon pullback (stacked ribbon)</option>
       </select></label>
       <label>Direction<select id="btDir"><option value="long">Long only</option><option value="short">Short only</option><option value="both">Both</option></select></label>
       <label>Stop (× ATR)<input id="btStop" type="number" step="0.1" min="0.3" value="1.5"></label>
       <label>Target (R)<input id="btTarget" type="number" step="0.5" min="0.5" value="2"></label>
-      <label>Exit<select id="btExit"><option value="target">Fixed target</option><option value="trail">Trailing stop</option><option value="partial">Half at 1R, rest at target</option></select></label>
+      <label>Exit<select id="btExit"><option value="target">Fixed target</option><option value="trail">Trailing stop</option><option value="partial">Half at 1R, rest at target</option><option value="ribbon">Ribbon flip (close beyond the slowest EMA)</option><option value="partialribbon">Half at 1R, rest on ribbon flip</option></select></label>
       <label>Max bars held<input id="btMax" type="number" step="1" min="1" value="40"></label>
       <label>Commission % / side<input id="btComm" type="number" step="0.01" min="0" value="0.1"></label>
       <label>Slippage %<input id="btSlip" type="number" step="0.01" min="0" value="0.05"></label>
@@ -779,7 +791,7 @@
     </form>
     <div class="qprefs">
       <b class="amber">WATCH MY LIST (hourly while the site is open):</b>
-      <label><input type="checkbox" id="qpAuto"> Auto paper-trade proven signals</label>
+      <label><input type="checkbox" id="qpAuto"> Paper bot trades proven signals</label>
       <label><input type="checkbox" id="qpShorts"> include shorts</label>
       <span class="muted">· Alert me when:</span>
       <label><input type="checkbox" id="qpStress"> regime turns stressed</label>
@@ -788,6 +800,46 @@
     </div>
     <div class="scroll" style="flex:1;overflow:auto;padding:10px" id="qOut">
       <div class="msgline">Bank-style models in one place: a walk-forward probability of the price being higher, GARCH volatility, a hidden-Markov regime, Monte Carlo odds of breaking support or resistance, trend-vs-mean-reversion tests and liquidity costs. Pick a coin and press RUN.</div>
+    </div>
+  </div>
+</section>
+
+<section class="view" id="v-bot">
+  <div class="full">
+    <div class="subtabs"><span class="title">BOT · PAPER TRADING BOT</span><b id="botState" class="muted">OFF</b>
+      <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="tbtn" id="botToggle">▶ START BOT</button><button type="button" class="tbtn" id="botKill">CLOSE ALL &amp; STOP</button><button type="button" class="tbtn" id="botReset">CLEAR LOG</button></span></div>
+    <div class="tiles" id="botTiles"></div>
+    <div class="cols" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);">
+      <section class="panel">
+        <h2>RULES <small>saved in this browser</small></h2>
+        <div class="body botform">
+          <b class="amber">WHAT IT TRADES</b>
+          <label><input type="checkbox" id="botScan"> Scanner setups (closed daily and 4-hour bars, checked every minute)</label>
+          <label><input type="checkbox" id="botLive"> Live breakouts: enters the moment price breaks the 20-day high (uptrend) or low (downtrend), checked every 15 s</label>
+          <label><input type="checkbox" id="botQuant"> Proven QUANT signals (BUY/SELL bias with an out-of-sample edge, time exit)</label>
+          <div id="botSetups" class="botsetups"></div>
+          <label>Grades<select id="botGrades"><option value="A">A only</option><option value="AB">A and B</option></select></label>
+          <label><input type="checkbox" id="botTested"> Only setups that passed BACKTEST (TESTED)</label>
+          <label><input type="checkbox" id="botShorts"> Allow shorts</label>
+          <b class="amber">RISK</b>
+          <label>Risk per trade (% of account)<input id="botRisk" type="number" min="0.05" max="5" step="0.05"></label>
+          <label>Max open trades<input id="botMaxOpen" type="number" min="1" max="20" step="1"></label>
+          <label>Max new trades a day<input id="botMaxDay" type="number" min="1" max="50" step="1"></label>
+          <label>Stop for the day after losing (% of account)<input id="botDayLoss" type="number" min="0.1" max="20" step="0.1"></label>
+          <label>Minimum reward:risk at entry<input id="botRR" type="number" min="0.5" max="10" step="0.1"></label>
+          <label><input type="checkbox" id="botStress"> Skip trades in a stressed regime (otherwise half size)</label>
+          <label>Exit<select id="botExit"><option value="target">Fixed target (2R)</option><option value="trail">Trailing stop (1.5× ATR)</option><option value="partial">Half at 1R, rest to target, stop to breakeven</option><option value="ribbon">Ribbon flip (price crosses the 22 EMA of the ribbon)</option></select></label>
+          <p class="fine">Paper money only: fills at the live price plus 0.05% slippage, sized from your account in JOURNAL → RISK RULES ($10,000 if not set). It runs while this site is open (a tab or the installed app) and scans My list. Every trade lands in the JOURNAL marked BOT. Turn on browser notifications to hear about each trade.</p>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>OPEN BOT TRADES <small id="botChecked"></small></h2>
+        <div class="body" id="botOpenBox"></div>
+        <h2>BOT EQUITY</h2>
+        <div class="body"><canvas id="botEq" style="width:100%;height:160px;display:block" aria-label="Bot equity curve"></canvas></div>
+        <h2>ACTIVITY</h2>
+        <div class="body" id="botLogBox" style="max-height:320px;overflow:auto"></div>
+      </section>
     </div>
   </div>
 </section>
@@ -938,6 +990,7 @@
       <tr><td>Keys 1–9, 0</td><td>Switch screens in menu order (when not typing); / jumps to the orange bar</td></tr>
       <tr><td>SCAN</td><td>Setup scanner over My list: entry, ATR stop, 2R target, grade; optional alerts on new A-grade setups</td></tr>
       <tr><td>QUANT · QUANT SOLUSDT · QUANT BTCUSD 4H · PROB · GARCH · REGIME</td><td>Quant models: walk-forward buy/sell probability with a live track record, GARCH volatility, hidden-Markov regime, breakdown odds, Hurst and variance ratio, liquidity and slippage, futures funding/open interest/liquidations, options vs model, position size, auto paper trading and alerts</td></tr>
+      <tr><td>BOT · BOT ON · BOT OFF</td><td>Paper trading bot: opens paper trades by itself on scanner setups, live 20-day breakouts and proven QUANT signals, with risk limits and automatic exits</td></tr>
       <tr><td>CORR · PRISK</td><td>Portfolio risk: correlation map, 1-day VaR and expected shortfall, each position's share of risk, risk-parity weights</td></tr>
       <tr><td>TAIL · TAIL ETHUSDT · VAR · HILL</td><td>Tail risk: Hill tail index, Gaussian vs Historical vs EVT VaR, rolling Kupiec backtest</td></tr>
       <tr><td>BT · BACKTEST</td><td>Test a setup on years of history with costs, in-sample vs out-of-sample</td></tr>
@@ -1834,6 +1887,9 @@ self.QLIB = (() => {
       showView("tail");
       return runTail();
     }
+    if (c === "BOT" || c === "AUTO") return showView("bot");
+    if (c === "BOT ON" || c === "BOT START") { showView("bot"); return bot.on ? toast("Paper bot", "Already running.") : botStart(); }
+    if (c === "BOT OFF" || c === "BOT STOP") { bot.on = false; saveBot(); botNote("halt", "", "Bot stopped. Open bot trades keep their stops and targets."); return showView("bot"); }
     if (["PRISK", "CORR", "PORT RISK"].includes(c)) { showView("port"); return runPortRisk(true); }
     if ((m = c.match(/^(?:QUANT|QNT|PROB|GARCH|REGIME)(?: (\S+))?(?: (4H|1D|D))?$/))) {
       if (m[1]) $("qSym").value = m[1];
@@ -3266,6 +3322,7 @@ self.QLIB = (() => {
         const cc = el("td"); cc.append(inp, " ", btn, " ", half, del);
         const sym = td(bareTicker(x.sym), "amber"); sym.style.cursor = "pointer"; sym.addEventListener("click", () => run(x.sym));
         if (x.paper) sym.append(" ", el("span", "chip other", "PAPER"));
+        if (x.auto) sym.append(" ", el("span", "chip buy", x.auto === "bot" ? "BOT" : "QUANT BOT"));
         tr.append(sym, gradeCell(x), td(x.side.toUpperCase(), x.side === "long" ? "up" : "down"), td(String(x.qty), "r"), td(fmt(x.entry), "r"), td(isNum(x.stop) ? fmt(x.stop) + (x.exitPlan === "trail" && x.stop !== x.stop0 ? " ↑trail" : x.exitPlan === "partial" && x.stop === x.entry ? " BE" : "") : "—", "r"),
           lastCell(last, x.sym), td(fmtUsd(pnl), "r " + signCls(pnl)), td(isNum(r) ? r.toFixed(2) + "R" : "—", "r " + signCls(r)), cc);
         t.append(tr);
@@ -3423,7 +3480,7 @@ self.QLIB = (() => {
       isNum(t.exit) ? tradePnl(t, t.exit).toFixed(2) : "", isNum(t.exit) && isNum(tradeR(t, t.exit)) ? tradeR(t, t.exit).toFixed(2) : "", t.grade || "", t.exitPlan || "target", t.paper ? "yes" : "no", t.setup || "", t.notes || ""].map(q).join(","));
     download(`trade-journal-${ymd(new Date())}.csv`, [head.join(","), ...lines].join("\n"), "text/csv");
   });
-  const BACKUP_KEYS = ["term.watch", "term.alerts", "term.portfolio", "term.journal", "term.rules", "term.cAcct", "term.cRisk", "term.symbol", "term.model", "term.alertAi", "term.approved", "term.qlog", "term.qprefs"];
+  const BACKUP_KEYS = ["term.watch", "term.alerts", "term.portfolio", "term.journal", "term.rules", "term.cAcct", "term.cRisk", "term.symbol", "term.model", "term.alertAi", "term.approved", "term.qlog", "term.qprefs", "term.bot", "term.botlog"];
   $("bkSave").addEventListener("click", () => {
     const data = { app: "market-terminal", version: 1, saved: new Date().toISOString(), items: {} };
     BACKUP_KEYS.forEach((k) => { const v = store.get(k); if (v != null) data.items[k] = v; });
@@ -4071,7 +4128,8 @@ self.QLIB = (() => {
       return (x > e200[i] ? 20 : 0) + (e20[i] > e50[i] ? 15 : 0) + (x > e50[i] ? 10 : 0) + (r >= 50 && r <= 70 ? 15 : r > 70 ? 8 : r >= 40 ? 5 : 0)
         + (macd[i] - sig[i] > 0 ? 10 : 0) + (i >= 21 && x > c[i - 21] ? 15 : 0) + pos * 15;
     });
-    d.ind = { e20, e50, e200, rsi: rsiS, atr, volAvg, hh20, ll20, score, hist: macd.map((v, i) => v - sig[i]) };
+    const rib = [0, 1, 2, 3, 4, 5, 6, 7].map((j) => IND.ema(c, 8 + 2 * j)); // EMA ribbon 8, 10 … 22
+    d.ind = { e20, e50, e200, rsi: rsiS, atr, volAvg, hh20, ll20, score, rib, hist: macd.map((v, i) => v - sig[i]) };
     return d.ind;
   }
   const trendAt = (d, i) => { const k = indicators(d); return d.c[i] > k.e50[i] && k.e20[i] > k.e50[i] ? 1 : d.c[i] < k.e50[i] && k.e20[i] < k.e50[i] ? -1 : 0; };
@@ -4082,6 +4140,16 @@ self.QLIB = (() => {
     if (setup === "pullback") return up && d.l[i] <= k.e20[i] && c > k.e20[i] && c > o ? 1 : dn && d.h[i] >= k.e20[i] && c < k.e20[i] && c < o ? -1 : 0;
     if (setup === "volspike") return vol >= 2 && c > o && c > k.e50[i] ? 1 : vol >= 2 && c < o && c < k.e50[i] ? -1 : 0;
     if (setup === "score") return k.score[i - 1] <= 70 && k.score[i] > 70 ? 1 : k.score[i - 1] >= 30 && k.score[i] < 30 ? -1 : 0;
+    if (setup === "ribbon" || setup === "ribbonpb") {
+      const R = k.rib, e1 = R[0][i], r = k.rsi[i];
+      if (setup === "ribbon") { // fastest EMA crosses the slowest, RSI agrees, close beyond the fastest EMA
+        const up = R[0][i - 1] <= R[7][i - 1] && e1 > R[7][i], dn = R[0][i - 1] >= R[7][i - 1] && e1 < R[7][i];
+        return up && r > 50 && c > e1 ? 1 : dn && r < 50 && c < e1 ? -1 : 0;
+      }
+      let bs = 0, ss = 0; // pullback into a fully stacked ribbon
+      for (let j = 0; j < 7; j++) { if (R[j][i] > R[j + 1][i]) bs++; else if (R[j][i] < R[j + 1][i]) ss++; }
+      return bs === 7 && d.l[i] <= R[3][i] && c > e1 && c > o && r > 50 ? 1 : ss === 7 && d.h[i] >= R[3][i] && c < e1 && c < o && r < 50 ? -1 : 0;
+    }
     return 0;
   }
 
@@ -4107,11 +4175,12 @@ self.QLIB = (() => {
         const o = d.o[i], h = d.h[i], l = d.l[i], s = pos.side;
         const stopHit = s > 0 ? l <= pos.stop : h >= pos.stop;
         if (stopHit) close(i, s > 0 ? Math.min(o, pos.stop) : Math.max(o, pos.stop), pos.stop === pos.entryRaw ? "breakeven" : pos.trailed ? "trail stop" : "stop");
-        if (pos && cfg.exit === "partial" && !pos.half && (s > 0 ? h >= pos.oneR : l <= pos.oneR)) {
+        if (pos && (cfg.exit === "partial" || cfg.exit === "partialribbon") && !pos.half && (s > 0 ? h >= pos.oneR : l <= pos.oneR)) {
           close(i, s > 0 ? Math.max(o, pos.oneR) : Math.min(o, pos.oneR), "1R", pos.qty / 2);
           if (pos) { pos.half = true; pos.stop = pos.entryRaw; }
         }
-        if (pos && cfg.exit !== "trail" && (s > 0 ? h >= pos.target : l <= pos.target)) close(i, s > 0 ? Math.max(o, pos.target) : Math.min(o, pos.target), "target");
+        if (pos && (cfg.exit === "ribbon" || cfg.exit === "partialribbon") && (s > 0 ? d.c[i] < k.rib[7][i] : d.c[i] > k.rib[7][i])) close(i, d.c[i], "ribbon flip");
+        if (pos && !["trail", "ribbon", "partialribbon"].includes(cfg.exit) && (s > 0 ? h >= pos.target : l <= pos.target)) close(i, s > 0 ? Math.max(o, pos.target) : Math.min(o, pos.target), "target");
         if (pos && i - pos.i + 1 >= cfg.maxBars) close(i, d.c[i], "time");
         if (pos && cfg.exit === "trail") {
           const t = d.c[i] - s * cfg.stopMult * k.atr[i];
@@ -4159,7 +4228,7 @@ self.QLIB = (() => {
       maxBars: +$("btMax").value || 40, comm: +$("btComm").value || 0, slip: +$("btSlip").value || 0, risk: +$("btRisk").value || 1, oos: +$("btOos").value, capital: 10000,
     };
   }
-  const SETUP_NAMES = { breakout: "Breakout", pullback: "Pullback to EMA20", volspike: "Volume spike", score: "Score 70/30" };
+  const SETUP_NAMES = { breakout: "Breakout", pullback: "Pullback to EMA20", volspike: "Volume spike", score: "Score 70/30", ribbon: "EMA ribbon cross", ribbonpb: "EMA ribbon pullback" };
   const TF_NAMES = { 60: "1 hour", 240: "4 hours", D: "1 day" };
   async function loadBtData(tf) {
     const sym = normalize($("btSym").value || bareTicker(symbol)) || symbol;
@@ -4457,13 +4526,16 @@ self.QLIB = (() => {
     const price = px.get(sym)?.price ?? dD.c.at(-1), atr = kD.atr[iD];
     const tD = trendAt(dD, iD), t4 = trendAt(d4, i4);
     const found = [];
-    for (const [setup, d, i, tf] of [["breakout", dD, iD, "1D"], ["pullback", dD, iD, "1D"], ["volspike", dD, iD, "1D"], ["score", dD, iD, "1D"], ["breakout", d4, i4, "4H"], ["pullback", d4, i4, "4H"], ["volspike", d4, i4, "4H"]]) {
+    for (const [setup, d, i, tf] of [["breakout", dD, iD, "1D"], ["pullback", dD, iD, "1D"], ["volspike", dD, iD, "1D"], ["score", dD, iD, "1D"], ["ribbon", dD, iD, "1D"], ["ribbonpb", dD, iD, "1D"],
+      ["breakout", d4, i4, "4H"], ["pullback", d4, i4, "4H"], ["volspike", d4, i4, "4H"], ["ribbon", d4, i4, "4H"], ["ribbonpb", d4, i4, "4H"]]) {
       const sg = signalAt(d, i, setup);
-      if (sg) found.push({ setup: `${SETUP_NAMES[setup]} (${tf})`, side: sg, tested: isTested(sym, tf === "1D" ? "D" : "240", setup, sg) });
+      if (sg) found.push({ setup: `${SETUP_NAMES[setup]} (${tf})`, side: sg, tested: isTested(sym, tf === "1D" ? "D" : "240", setup, sg), barT: d.t[i], key: setup, tf: tf === "1D" ? "D" : "240" });
     }
     const nearEma = Math.abs(price - kD.e20[iD]) <= atr;
     if (!found.length && tD && tD === t4 && nearEma) found.push({ setup: "Pullback zone (watch)", side: tD, watch: true });
-    const pick = found.find((f) => f.tested && f.side === tD) || found.find((f) => f.tested) || found.find((f) => f.side === tD) || found[0];
+    // With the bot running, prefer the setup types it is allowed to trade.
+    const botOk = found.filter((f) => !bot.on || f.watch || bot.setups.includes(f.key)), pool = botOk.length ? botOk : found;
+    const pick = pool.find((f) => f.tested && f.side === tD) || pool.find((f) => f.tested) || pool.find((f) => f.side === tD) || pool[0];
     const qv = await quantSafe(sym);
     const base = { sym, price, atr, tD, t4, score: kD.score[iD], vol: dD.v[iD] / kD.volAvg[iD], rsi: kD.rsi[iD], hi20: kD.hh20[iD + 1], lo20: kD.ll20[iD + 1],
       q: qv ? { p: qv.wf.now, edge: qv.wf.edge, dir: qSignal(qv).dir, stressed: qv.hm.pNow > 0.5, H: qv.H } : null };
@@ -4474,7 +4546,7 @@ self.QLIB = (() => {
     let qty = acct > 0 ? (acct * riskPct) / 100 / Math.abs(price - stop) : 1;
     qty = assetClass(sym) === "crypto" ? Math.floor(qty * 1e4) / 1e4 : Math.max(1, Math.floor(qty));
     const res = await evaluateTrade({ sym, side: side > 0 ? "long" : "short", qty, entry: price, stop, target, tested: !!pick.tested });
-    return { ...base, setup: pick.setup, tested: !!pick.tested, watch: !!pick.watch, others: found.length - 1, side, entry: price, stop, target, qty, grade: res.grade, checks: res.checks };
+    return { ...base, setup: pick.setup, setupKey: pick.key, setupTf: pick.tf, barT: pick.barT, tested: !!pick.tested, watch: !!pick.watch, others: found.length - 1, side, entry: price, stop, target, qty, grade: res.grade, checks: res.checks };
   }
   let scanPromise = null;
   function runScan(silent) {
@@ -4493,6 +4565,7 @@ self.QLIB = (() => {
     const rank = (r) => (r.error ? 9 : !r.setup ? 8 : { A: 0, B: 2, C: 4 }[r.grade] + (r.watch ? 1 : 0) - (r.tested ? 0.5 : 0));
     rows.sort((a, b) => rank(a) - rank(b) || (b.score || 0) - (a.score || 0));
     scanRows = rows; scanAt = Date.now(); scanBusy = false; // scanAt always moves on, even when every symbol failed
+    try { botOnScan(rows); } catch (e) { errNote("Paper bot", e); }
     if (view === "scan") renderScan();
     // Alerts: only new A-grade setups (not watch-list candidates), once per symbol, setup and day.
     if ($("scanAlerts").checked) {
@@ -4574,7 +4647,7 @@ self.QLIB = (() => {
   // ───────────────────────── Smarter exits, paper trading, insights, process ─────────────────────────
   let jrMode = store.get("term.jrMode") || "all";
   const inMode = (t) => jrMode === "all" || (jrMode === "paper" ? !!t.paper : !t.paper);
-  const PLAN_NAMES = { target: "Fixed target", trail: "Trailing stop", partial: "Half at 1R" };
+  const PLAN_NAMES = { target: "Fixed target", trail: "Trailing stop", partial: "Half at 1R", ribbon: "Ribbon flip" };
   const PAPER_SLIP = 0.0005;
 
   // Daily ATR at entry, used for trailing stops.
@@ -4598,10 +4671,7 @@ self.QLIB = (() => {
       }
       const fire = (key, title, body) => { if (t.alerted[key]) return; t.alerted[key] = Date.now(); changed = true; toast(title, body, "alert"); notify(title, body); beep(); };
       const who = `${t.paper ? "PAPER " : ""}${t.side.toUpperCase()} ${bareTicker(t.sym)}`;
-      if (t.auto === "quant" && t.paper) {
-        if (isNum(t.stop) && (s > 0 ? p <= t.stop : p >= t.stop)) { qAutoClose(t, "stop", p); continue; }
-        if (isNum(t.target) && (s > 0 ? p >= t.target : p <= t.target)) { qAutoClose(t, "target", p); continue; }
-      }
+      if (t.auto && t.paper && botManage(t, p)) continue;
       if (isNum(t.stop) && (s > 0 ? p <= t.stop : p >= t.stop)) fire("stop", `STOP HIT · ${who}`, `Price ${fmt(p)} crossed your ${t.exitPlan === "trail" ? "trailing " : ""}stop ${fmt(t.stop)}. Close it as planned.`);
       if (isNum(t.target) && (s > 0 ? p >= t.target : p <= t.target)) fire("target", `TARGET HIT · ${who}`, `Price ${fmt(p)} reached your target ${fmt(t.target)}.`);
       if (t.exitPlan === "partial" && isNum(stop0)) {
@@ -4863,7 +4933,7 @@ self.QLIB = (() => {
       ...(sigs.length ? sigs.slice(0, 5).map((v) => { const sg = qSignal(v); return line(sg.cls, `${sg.head} ${bareTicker(v.sym)} · ${(v.wf.now * 100).toFixed(0)}% chance higher in 5 days`); }) : [line("muted", qRows.length ? `No proven buy or sell bias on ${qRows.length} symbols checked.` : "Checking My list in the background…")]),
       ...(stress.length ? [line("down", `Stressed regime: ${stress.map((v) => bareTicker(v.sym)).join(", ")}. Use half size.`)] : []),
       line(qs.graded ? (qs.sigHit > 0.5 ? "up" : "amber") : "muted", qs.graded ? `Live record: ${qs.graded} calls graded; buy/sell bias calls right ${isNum(qs.sigHit) ? (qs.sigHit * 100).toFixed(0) + "% of " + qs.sig : "— (none yet)"}.` : `Live record: ${qs.n} calls logged, graded after their horizon passes.`),
-      line("fine", qPrefs.auto ? "Auto paper trading is ON." : "Auto paper trading is off (QUANT screen)."), actBtn("OPEN QUANT", () => showView("quant"))));
+      line(bot.on ? "up" : "fine", bot.on ? `Paper bot RUNNING: ${botOpen().length} open, today ${fmtUsd(botToday().pnl)}.` : "Paper bot is off (BOT screen)."), (() => { const d = el("div", "acts"); d.append(actBtn("OPEN QUANT", () => showView("quant")), actBtn("OPEN BOT", () => showView("bot"))); return d; })()));
 
     // 5. My list movers
     const moves = myList.map((s) => { const o = px.get(s) || {}; return { s, pct: isNum(o.price) && isNum(o.prev) ? (o.price / o.prev - 1) * 100 : NaN }; }).filter((x) => isNum(x.pct)).sort((a, b) => b.pct - a.pct);
@@ -4915,7 +4985,7 @@ self.QLIB = (() => {
   const CMDS = [["TODAY", "home screen"], ["MAIN", "main screen"], ["CHARTS", "big chart + list"], ["GRID 4", "multi-chart"], ["SCAN", "setup scanner"], ["BACKTEST", "test a setup"], ["JRNL", "trade journal"],
     ["FLOW", "order flow"], ["RES", "research"], ["PORT", "portfolio"], ["ALRT", "alerts & calculator"], ["HEAT", "heatmap"], ["EQS", "screener"], ["AI", "AI analyst"], ["BRIEF", "AI morning brief"],
     ["ASK ", "ask the AI"], ["ADD ", "add to My list"], ["DEL ", "remove from My list"], ["ALERT BTCUSD > ", "price alert"], ["LOG LONG ", "log a trade"], ["PAPER LONG ", "paper trade"], ["CLOSE ", "close a trade"], ["HALF ", "close half"],
-    ["TAIL ", "tail risk (Hill, VaR)"], ["QUANT ", "quant models (probability, regime, liquidity)"], ["QUANT BTCUSD 4H", "quant on 4-hour bars"], ["CORR", "portfolio risk & correlation"], ["BUY ", "portfolio buy"], ["SELL ", "portfolio sell"], ["MAX", "full-screen chart"], ["SETTINGS", "keys & backup"], ["HELP", "all commands"]];
+    ["TAIL ", "tail risk (Hill, VaR)"], ["QUANT ", "quant models (probability, regime, liquidity)"], ["QUANT BTCUSD 4H", "quant on 4-hour bars"], ["CORR", "portfolio risk & correlation"], ["BOT", "paper trading bot"], ["BOT ON", "start the paper bot"], ["BOT OFF", "stop the paper bot"], ["BUY ", "portfolio buy"], ["SELL ", "portfolio sell"], ["MAX", "full-screen chart"], ["SETTINGS", "keys & backup"], ["HELP", "all commands"]];
   function fillCmdList() {
     const opts = [...CMDS.map(([v, l]) => [v, l]), ...myList.map((s) => [bareTicker(s), "load " + s])];
     $("cmdList").replaceChildren(...opts.map(([v, l]) => { const o = el("option"); o.value = v; o.label = l; return o; }));
@@ -4957,12 +5027,12 @@ self.QLIB = (() => {
     ];
   }
 
-  const VERSION = "2026.10.13-quant2";
+  const VERSION = "2026.10.13-bot";
   function whatsNew() {
     const seen = store.get("term.version");
     store.set("term.version", VERSION);
     if (!seen || seen === VERSION) return;
-    toast("New: QUANT upgrade", "Live track record, auto paper trading, alerts, futures and options data, 4-hour models, portfolio risk (PORTFOLIO → RISK ANALYSIS), stocks with a free Twelve Data key and quant.pine for TradingView.");
+    toast("New: paper trading BOT", "Opens paper trades by itself as soon as a setup appears (scanner, live breakouts, QUANT), with risk limits and automatic exits. Open BOT, set your rules and press START.");
   }
 
   // ───────────────────────── TAIL RISK screen ─────────────────────────
@@ -5271,30 +5341,23 @@ self.QLIB = (() => {
     const s = qSignal(v), dir = s.dir || (v.wf.now >= 0.5 ? 1 : -1), entry = px.get(v.sym)?.price ?? v.d.live ?? v.d.c.at(-1), lv = qLevels(v, entry, dir);
     prefillTrade({ side: dir, sym: v.sym, qty: lv.qty, entry, stop: lv.stop, target: lv.target, setup: `QUANT ${dir > 0 ? "BUY" : "SELL"} BIAS p=${(v.wf.now * 100).toFixed(0)}%` });
   }
-  // ── Auto paper trading of proven signals (paper only; real money is always your decision).
+  // ── Proven QUANT signals go to the paper bot (BOT screen), which applies its risk limits.
   function qAutoPaper(v) {
-    if (!qPrefs.auto) return;
-    const s = qSignal(v);
-    if (!s.dir || (s.dir < 0 && !qPrefs.shorts)) return;
-    if (journal.some((t) => !isNum(t.exit) && t.auto === "quant" && t.sym === v.sym)) return;
-    if (journal.some((t) => t.auto === "quant" && t.sym === v.sym && t.qday === v.d.t.at(-1))) return; // one per bar
-    const side = s.dir > 0 ? "long" : "short";
-    let f = paperFill(v.sym, side, false);
-    if (f.error) { if (!isNum(v.d.live)) return; f = { price: +(v.d.live * (1 + s.dir * PAPER_SLIP)).toPrecision(10) }; }
-    const lv = qLevels(v, f.price, s.dir);
-    const t = { sym: v.sym, side, qty: lv.qty, entry: f.price, stop: +lv.stop.toPrecision(8), target: +lv.target.toPrecision(8), setup: `QUANT ${s.head} p=${(v.wf.now * 100).toFixed(0)}%`,
-      notes: `Auto paper trade from the QUANT model. Stop 2σ, target 2R, time exit after ${unitTxt(v.tf, v.H)}.`, paper: true, auto: "quant", qday: v.d.t.at(-1), closeAfter: Date.now() + v.H * QTF[v.tf].ms };
-    gradeLater(logTrade(t), t);
-    const title = `AUTO PAPER ${side.toUpperCase()} · ${bareTicker(v.sym)}`, body = `${s.head}: ${(v.wf.now * 100).toFixed(0)}% chance higher in ${unitTxt(v.tf, v.H)}. Entry ${fmt(t.entry)}, stop ${fmt(t.stop)}, target ${fmt(t.target)}.`;
-    toast(title, body, "alert"); notify(title, body);
+    if (!bot.on || !bot.quant) return;
+    const s = qSignal(v), entry = px.get(v.sym)?.price ?? v.d.live;
+    if (!s.dir || !isNum(entry)) return;
+    const lv = qLevels(v, entry, s.dir);
+    botConsider({ sym: v.sym, side: s.dir, setup: `QUANT ${s.head} p=${(v.wf.now * 100).toFixed(0)}% (${unitTxt(v.tf, v.H)})`, source: "quant", stop: lv.stop, target: lv.target, stressed: v.hm.pNow > 0.5,
+      key: `quant|${bareTicker(v.sym)}|${v.tf}|${v.d.t.at(-1)}`, closeAfter: Date.now() + v.H * QTF[v.tf].ms, qday: v.d.t.at(-1) });
   }
   function qAutoClose(t, why, price) {
     const f = paperFill(t.sym, t.side, true), p = isNum(f.price) ? f.price : price;
     if (!isNum(p)) return;
     t.exitWhy = why;
     closeTrade(t.id, p);
-    const title = `AUTO PAPER CLOSED · ${bareTicker(t.sym)}`, body = `${why === "time" ? "Time exit" : why === "stop" ? "Stop hit" : "Target hit"} at ${fmt(p)}: ${fmtUsd(tradePnl(t, p))}.`;
+    const title = `${t.auto === "bot" ? "BOT" : "AUTO PAPER"} CLOSED · ${bareTicker(t.sym)}`, body = `${{ time: "Time exit", stop: "Stop hit", target: "Target hit", manual: "Closed", ribbon: "Ribbon flipped" }[why] || "Closed"} at ${fmt(p)}: ${fmtUsd(tradePnl(t, p))}.`;
     notify(title, body);
+    if (why !== "manual") botNote("close", t.sym, `${title}: ${body}`);
     if (view === "jrnl") renderJournal();
   }
   function qTimeExits() {
@@ -5342,6 +5405,7 @@ self.QLIB = (() => {
   }
   setTimeout(() => qMonitor(), 20_000);
   setInterval(() => qMonitor(), 60 * 60_000);
+  setInterval(() => { if (bot.on && bot.quant) qMonitor(); }, 15 * 60_000);
 
   // ───────────────────────── Crypto derivatives: Binance futures and Deribit options ─────────────────────────
   const FAPI = "https://fapi.binance.com/";
@@ -5679,12 +5743,13 @@ self.QLIB = (() => {
   }
   $("qForm").addEventListener("submit", (e) => { e.preventDefault(); runQuant(); });
   // Monitoring and auto paper-trading preferences.
-  for (const [id, k] of [["qpAuto", "auto"], ["qpShorts", "shorts"], ["qpStress", "aStress"], ["qpBreak", "aBreak"], ["qpFlip", "aFlip"]]) {
+  $("qpAuto").addEventListener("change", () => { bot.quant = $("qpAuto").checked; if (bot.quant && !bot.on) botStart(); else saveBot(); if (bot.quant) toast("Paper bot", "The bot now trades proven QUANT signals on My list. Rules and activity: BOT screen."); });
+  $("qpShorts").addEventListener("change", () => { bot.shorts = $("qpShorts").checked; saveBot(); });
+  for (const [id, k] of [["qpStress", "aStress"], ["qpBreak", "aBreak"], ["qpFlip", "aFlip"]]) {
     $(id).checked = !!qPrefs[k];
     $(id).addEventListener("change", () => {
       qPrefs[k] = $(id).checked; saveJSON("term.qprefs", qPrefs);
       if ($(id).checked && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
-      if (k === "auto" && qPrefs.auto) { toast("Auto paper trading on", "Proven BUY/SELL bias calls on My list open paper trades (stop 2σ, target 2R, time exit). Checks hourly while the site is open."); qMonitor(); }
     });
   }
 
@@ -5754,6 +5819,238 @@ self.QLIB = (() => {
   }
   $("portRiskBtn").addEventListener("click", () => runPortRisk(true));
 
+  // ───────────────────────── Paper trading bot ─────────────────────────
+  // Opens paper trades by itself the moment a setup appears: scanner setups on closed
+  // daily/4-hour bars (checked every minute), live breakouts of the 20-day high or low
+  // (checked every 15 seconds on live prices) and proven QUANT signals. Every trade goes
+  // through the same risk limits, and exits run by themselves (stop, target, trail, half at 1R).
+  // Paper only: no exchange or broker keys, no real orders.
+  const BOT_SETUPS = ["breakout", "pullback", "volspike", "score", "ribbon", "ribbonpb"];
+  const BOT_DEF = { on: false, setups: BOT_SETUPS, scan: true, live: false, quant: false, grades: "A", tested: false, shorts: false, risk: 0.5, maxOpen: 3, maxDay: 5, dayLoss: 2, skipStress: true, minRR: 1.8, exit: "target" };
+  const bot = { ...BOT_DEF, ...loadJSON("term.bot", {}) };
+  if (qPrefs.auto && !store.get("term.bot")) { bot.on = true; bot.quant = true; bot.shorts = !!qPrefs.shorts; } // from the old QUANT checkbox
+  let botLog = loadJSON("term.botlog", []), botHaltDay = store.get("term.botHalt") || "", botCheckAt = 0;
+  const botTaken = new Set(loadJSON("term.botTaken", [])), botSkipSeen = new Set();
+  const saveBot = () => { saveJSON("term.bot", bot); qPrefs.auto = bot.quant && bot.on; qPrefs.shorts = bot.shorts; saveJSON("term.qprefs", qPrefs); syncBotUI(); };
+  function botNote(kind, sym, text) {
+    botLog.push({ t: Date.now(), kind, sym, text });
+    if (botLog.length > 300) botLog = botLog.slice(-300);
+    saveJSON("term.botlog", botLog);
+    if (view === "bot") renderBot();
+  }
+  const botTrades = () => journal.filter((t) => t.auto === "bot" || t.auto === "quant");
+  const botOpen = () => botTrades().filter((t) => !isNum(t.exit));
+  function botToday() {
+    const day = todayPlus(0), mine = botTrades();
+    const realized = mine.filter((t) => isNum(t.exit) && dayKey(t.closed) === day).reduce((a, t) => a + tradePnl(t, t.exit), 0);
+    const open = botOpen().reduce((a, t) => { const p = px.get(t.sym)?.price; return a + (isNum(p) ? tradePnl(t, p) : 0); }, 0);
+    return { opened: mine.filter((t) => dayKey(t.opened) === day && !t.partOf).length, pnl: realized + open };
+  }
+  const botAcct = () => accountSize() || 10000;
+
+  // c: { sym, side (1 or −1), setup, source, stop, target, grade, tested, key, stressed, closeAfter }
+  function botConsider(c) {
+    if (!bot.on) return false;
+    const day = todayPlus(0), name = bareTicker(c.sym);
+    const skip = (why) => {
+      const k = `${c.key}|${why}`;
+      if (!botSkipSeen.has(k)) { botSkipSeen.add(k); botNote("skip", c.sym, `Skipped ${c.side > 0 ? "LONG" : "SHORT"} ${name} (${c.setup}): ${why}.`); }
+      return false;
+    };
+    if (botTaken.has(c.key)) return false;
+    if (botOpen().some((t) => bareTicker(t.sym) === name)) return false; // already in this market
+    if (botHaltDay === day) return skip("daily loss limit hit, the bot is paused until tomorrow");
+    if (c.side < 0 && !bot.shorts) return skip("shorts are off");
+    if (c.source === "scan" && bot.grades === "A" && c.grade !== "A") return skip(`grade ${c.grade}, the bot only takes A`);
+    if (c.source === "scan" && c.grade === "C") return skip("grade C");
+    if (c.source !== "quant" && bot.tested && !c.tested) return skip("not a TESTED setup");
+    if (botOpen().length >= bot.maxOpen) return skip(`already ${bot.maxOpen} open bot trades`);
+    const today = botToday();
+    if (today.opened >= bot.maxDay) return skip(`already ${bot.maxDay} bot trades today`);
+    if (today.pnl <= -(botAcct() * bot.dayLoss) / 100) {
+      botHaltDay = day; store.set("term.botHalt", day);
+      botNote("halt", c.sym, `Daily loss limit reached (${fmtUsd(today.pnl)}, limit ${bot.dayLoss}% of ${fmtUsd(botAcct())}). No new trades until tomorrow.`);
+      notify("PAPER BOT PAUSED", "Daily loss limit reached. No new trades until tomorrow.");
+      return false;
+    }
+    if (c.stressed && bot.skipStress) return skip("the market is in its stressed regime");
+    const side = c.side > 0 ? "long" : "short", f = paperFill(c.sym, side, false);
+    if (f.error) return skip(f.error.replace(/\.$/, "").toLowerCase());
+    const entry = f.price;
+    if (!(c.side > 0 ? c.stop < entry && c.target > entry : c.stop > entry && c.target < entry)) return skip("price already moved past the stop or target");
+    const rr = Math.abs(c.target - entry) / Math.abs(entry - c.stop);
+    if (rr < bot.minRR) return skip(`reward:risk ${rr.toFixed(2)} from here, below ${bot.minRR}`);
+    let qty = (botAcct() * bot.risk) / 100 / Math.abs(entry - c.stop);
+    if (c.stressed) qty /= 2;
+    qty = Math.min(qty, botAcct() / entry); // never more than the whole account (no leverage)
+    qty = assetClass(c.sym) === "crypto" ? Math.floor(qty * 1e4) / 1e4 : Math.floor(qty);
+    if (!(qty > 0)) return skip("position size rounds to zero; raise the risk per trade or the account size");
+    botTaken.add(c.key); saveJSON("term.botTaken", [...botTaken].slice(-500));
+    const t = { sym: c.sym, side, qty, entry, tf: c.tf || "D", stop: +c.stop.toPrecision(8), target: +c.target.toPrecision(8), setup: c.setup, paper: true, auto: c.source === "quant" ? "quant" : "bot", botSrc: c.source,
+      exitPlan: c.source === "quant" ? "target" : bot.exit, notes: `Opened by the paper bot (${c.source === "scan" ? "scanner setup" : c.source === "live" ? "live breakout" : "QUANT signal"}${c.grade ? ", grade " + c.grade : ""}${c.stressed ? ", half size: stressed regime" : ""}).`,
+      ...(c.closeAfter ? { closeAfter: c.closeAfter, qday: c.qday } : {}) };
+    gradeLater(logTrade(t), t);
+    if (t.exitPlan === "ribbon") setTimeout(botRibbonLevels, 1000);
+    const title = `BOT ${side.toUpperCase()} · ${name}`, body = `${c.setup}. ${qty} @ ${fmt(entry)}, stop ${fmt(t.stop)}, target ${fmt(t.target)} (risk ${fmtUsd(Math.abs(entry - t.stop) * qty)}).`;
+    botNote("open", c.sym, `${title}: ${body}`);
+    toast(title, body, "alert"); notify(title, body); beep();
+    return true;
+  }
+  // Exits for bot trades: called from the price watcher with the live price.
+  function botManage(t, p) {
+    const s = t.side === "short" ? -1 : 1, stop0 = t.stop0 ?? t.stop;
+    if (t.exitPlan === "partial" && !t.halfDone && isNum(stop0) && (s > 0 ? p >= t.entry + Math.abs(t.entry - stop0) : p <= t.entry - Math.abs(t.entry - stop0))) {
+      t.halfDone = true;
+      const f = paperFill(t.sym, t.side, true);
+      closePart(t.id, isNum(f.price) ? f.price : p, t.qty / 2);
+      botNote("close", t.sym, `Took half of ${bareTicker(t.sym)} at 1R (${fmt(p)}); stop moved to breakeven.`);
+      return true;
+    }
+    if (isNum(t.stop) && (s > 0 ? p <= t.stop : p >= t.stop)) { qAutoClose(t, "stop", p); return true; }
+    if (t.exitPlan === "ribbon" && isNum(t.ribStop) && (s > 0 ? p < t.ribStop : p > t.ribStop)) { qAutoClose(t, "ribbon", p); return true; }
+    if (t.exitPlan !== "trail" && t.exitPlan !== "ribbon" && isNum(t.target) && (s > 0 ? p >= t.target : p <= t.target)) { qAutoClose(t, "target", p); return true; }
+    return false;
+  }
+  // Scanner setups (closed bars) → bot.
+  function botOnScan(rows) {
+    if (!bot.on || !bot.scan) return;
+    for (const r of rows) {
+      if (r.error || !r.setup || r.watch) continue;
+      if (!bot.setups.includes(r.setupKey)) continue;
+      botConsider({ sym: r.sym, side: r.side, setup: r.setup, source: "scan", tf: r.setupTf, stop: r.stop, target: r.target, grade: r.grade, tested: r.tested, stressed: !!r.q?.stressed, key: `scan|${bareTicker(r.sym)}|${r.setup}|${r.barT || todayPlus(0)}` });
+    }
+  }
+  // Live breakouts: price takes out the 20-day high (uptrend) or low (downtrend) right now.
+  function botLive() {
+    if (!bot.on || !bot.live) return;
+    for (const r of scanRows) {
+      if (r.error || !isNum(r.hi20) || !isNum(r.atr)) continue;
+      const p = px.get(r.sym)?.price;
+      if (!isNum(p)) continue;
+      const dir = r.tD > 0 && p > r.hi20 ? 1 : r.tD < 0 && p < r.lo20 ? -1 : 0;
+      if (!dir) continue;
+      botConsider({ sym: r.sym, side: dir, setup: `Live breakout of the 20-day ${dir > 0 ? "high" : "low"} ${fmt(dir > 0 ? r.hi20 : r.lo20)}`, source: "live", stop: p - dir * 1.5 * r.atr, target: p + dir * 3 * r.atr,
+        tested: isTested(r.sym, "D", "breakout", dir), stressed: !!r.q?.stressed, key: `live|${bareTicker(r.sym)}|${dir}|${todayPlus(0)}` });
+    }
+  }
+  // Ribbon-flip exits follow the slowest ribbon EMA (22) of the trade's timeframe, from the last closed bar.
+  async function botRibbonLevels() {
+    for (const t of botOpen().filter((x) => x.exitPlan === "ribbon")) {
+      try {
+        const raw = await getCandles(t.sym, t.tf || "D", 120);
+        if (raw.error) continue;
+        const d = closedBars(raw, t.tf || "D"), e = IND.ema(d.c, 22).at(-1);
+        if (isNum(e) && e !== t.ribStop) { t.ribStop = e; saveJSON("term.journal", journal); }
+      } catch {}
+    }
+  }
+  setInterval(() => { if (botOpen().some((x) => x.exitPlan === "ribbon")) botRibbonLevels(); }, 5 * 60_000);
+  setInterval(() => { if (bot.on) { botCheckAt = Date.now(); botLive(); if (view === "bot") renderBot(); } }, 15_000);
+  setInterval(() => { if (bot.on && (bot.scan || bot.live) && myList.length) runScan(true); }, 60_000);
+  function botKill() {
+    const open = botOpen();
+    for (const t of open) qAutoClose(t, "manual", px.get(t.sym)?.price);
+    bot.on = false; saveBot();
+    botNote("halt", "", `Bot stopped by you${open.length ? `; closed ${open.length} open bot trade${open.length > 1 ? "s" : ""}` : ""}.`);
+    renderBot();
+  }
+  function botStart() {
+    bot.on = true; botHaltDay = ""; store.set("term.botHalt", null); saveBot();
+    if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+    botNote("start", "", `Bot started (paper): ${[bot.scan && "scanner setups", bot.live && "live breakouts", bot.quant && "QUANT signals"].filter(Boolean).join(", ") || "no sources ticked"}; risk ${bot.risk}% per trade, max ${bot.maxOpen} open, ${bot.maxDay} a day, stop at −${bot.dayLoss}% a day.`);
+    if (!myList.length) toast("Paper bot", "My list is empty: add symbols so the bot has something to scan.");
+    runScan(true).then(() => botLive());
+    if (bot.quant) qMonitor();
+    renderBot();
+  }
+
+  // ── BOT screen
+  function syncBotUI() {
+    const b = $("botToggle");
+    if (!b) return;
+    b.textContent = bot.on ? "■ STOP BOT" : "▶ START BOT";
+    b.className = "tbtn " + (bot.on ? "on" : "");
+    $("botState").textContent = bot.on ? (botHaltDay === todayPlus(0) ? "PAUSED (daily loss limit)" : "RUNNING · PAPER") : "OFF";
+    $("botState").className = bot.on ? (botHaltDay === todayPlus(0) ? "amber" : "up") : "muted";
+    if ($("qpAuto")) { $("qpAuto").checked = bot.on && bot.quant; $("qpShorts").checked = bot.shorts; }
+  }
+  function renderBot() {
+    syncBotUI();
+    const all = botTrades(), closed = all.filter((t) => isNum(t.exit)), open = all.filter((t) => !isNum(t.exit)), s = stats(closed), today = botToday();
+    const tile = (label, value, cls, tip) => { const d = el("div", "tile"); d.title = tip || ""; d.append(el("div", "muted", label), el("div", "v " + (cls || ""), value)); return d; };
+    $("botTiles").replaceChildren(
+      tile("STATUS", bot.on ? (botHaltDay === todayPlus(0) ? "PAUSED" : "RUNNING") : "OFF", bot.on ? "up" : "muted"),
+      tile("OPEN", `${open.length} / ${bot.maxOpen}`),
+      tile("TODAY", `${today.opened} / ${bot.maxDay} · ${fmtUsd(today.pnl)}`, signCls(today.pnl)),
+      tile("BOT NET P&L", fmtUsd(s.net), signCls(s.net)),
+      tile("TRADES", String(s.n)),
+      tile("WIN RATE", isNum(s.winRate) ? s.winRate.toFixed(0) + "%" : "—"),
+      tile("PROFIT FACTOR", s.pf === Infinity ? "∞" : isNum(s.pf) ? s.pf.toFixed(2) : "—", isNum(s.pf) ? (s.pf >= 1 ? "up" : "down") : ""),
+      tile("AVG R", isNum(s.avgR) ? (s.avgR >= 0 ? "+" : "") + s.avgR.toFixed(2) + "R" : "—", signCls(s.avgR)),
+      tile("MAX DRAWDOWN", fmtUsd(s.maxDD), s.maxDD < 0 ? "down" : ""),
+      tile("PAPER ACCOUNT", fmtUsd(botAcct()), "", "Your account size from JOURNAL → RISK RULES, or $10,000 if it isn't set."));
+    // Open positions
+    const t = el("table", "t"), hr = el("tr");
+    [["SYMBOL"], ["SIDE"], ["SOURCE"], ["QTY", 1], ["ENTRY", 1], ["STOP", 1], ["TARGET", 1], ["LAST", 1], ["P&L", 1], ["R", 1], [""]].forEach(([h, r]) => hr.append(th(h, r)));
+    t.append(hr);
+    for (const x of open) {
+      const p = px.get(x.sym)?.price, r = isNum(p) ? tradeR(x, p) : NaN, tr = el("tr"), cb = el("button", "tbtn", "CLOSE"), c = el("td");
+      cb.type = "button"; cb.addEventListener("click", () => { qAutoClose(x, "manual", p); botNote("close", x.sym, `You closed ${bareTicker(x.sym)} at ${fmt(p)}.`); renderBot(); });
+      c.append(cb);
+      tr.append(td(bareTicker(x.sym), "amber"), td(x.side.toUpperCase(), x.side === "long" ? "up" : "down"), td(x.botSrc === "live" ? "live breakout" : x.auto === "quant" ? "QUANT" : "scanner", "muted"), td(String(x.qty), "r"), td(fmt(x.entry), "r"),
+        td(isNum(x.stop) ? fmt(x.stop) + (x.exitPlan === "trail" && x.stop !== x.stop0 ? " ↑trail" : x.exitPlan === "partial" && x.stop === x.entry ? " BE" : "") : "—", "r down"), td(x.exitPlan === "trail" ? "trailing" : x.exitPlan === "ribbon" ? `ribbon ${isNum(x.ribStop) ? fmt(x.ribStop) : "…"}` : fmt(x.target), "r up"),
+        td(isNum(p) ? fmt(p) : "—", "r"), td(isNum(p) ? fmtUsd(tradePnl(x, p)) : "—", "r " + (isNum(p) ? signCls(tradePnl(x, p)) : "")), td(isNum(r) ? (r >= 0 ? "+" : "") + r.toFixed(2) + "R" : "—", "r " + signCls(r)), c);
+      t.append(tr);
+    }
+    $("botOpenBox").replaceChildren(open.length ? t : el("div", "msgline", bot.on ? "No open bot trades. Waiting for a setup that passes your rules." : "Bot is off. Set your rules on the left and press START BOT."));
+    // Activity log
+    const ul = el("ul", "botlog");
+    for (const x of botLog.slice(-60).reverse()) {
+      const li = el("li", { open: "up", close: "amber", skip: "muted", halt: "down", start: "amber" }[x.kind] || "");
+      li.append(el("span", "muted", new Date(x.t).toLocaleString() + " · "), x.text);
+      ul.append(li);
+    }
+    $("botLogBox").replaceChildren(botLog.length ? ul : el("div", "msgline", "Nothing yet. Every trade the bot opens or closes, and every setup it skips (with the reason), shows up here."));
+    // Equity curve
+    const cv = $("botEq"), pnl = closed.sort((a, b) => new Date(a.closed) - new Date(b.closed)).map((x) => tradePnl(x, x.exit));
+    const { g, w, h } = ctx2d(cv), pad = { l: 70, r: 10, t: 18, b: 12 };
+    if (pnl.length < 2) { g.fillStyle = "#8c8c8c"; g.fillText("The equity curve appears after 2 closed bot trades.", 10, 20); }
+    else {
+      let e = 0; const eq = [0, ...pnl.map((x) => (e += x))], lo = Math.min(...eq), hi = Math.max(...eq);
+      const X = (i) => pad.l + ((w - pad.l - pad.r) * i) / (eq.length - 1), Y = (v) => h - pad.b - ((h - pad.t - pad.b) * (v - lo)) / (hi - lo || 1);
+      qAxes(g, w, h, pad, lo, hi, (v) => fmtUsd(v));
+      qLine(g, eq.map((v, i) => [i, v]), X, Y, e >= 0 ? "#4af626" : "#ff433d");
+      legend(g, pad.l + 4, 14, [["bot P&L, closed trades", e >= 0 ? "#4af626" : "#ff433d"]]);
+    }
+    $("botChecked").textContent = bot.on ? `Live prices checked ${botCheckAt ? new Date(botCheckAt).toLocaleTimeString() : "—"} · scanner ${scanAt ? new Date(scanAt).toLocaleTimeString() : "—"} · QUANT ${qMonAt ? new Date(qMonAt).toLocaleTimeString() : "—"}` : "";
+  }
+  // Settings form
+  const BOT_FIELDS = [["botScan", "scan", "check"], ["botLive", "live", "check"], ["botQuant", "quant", "check"], ["botShorts", "shorts", "check"], ["botTested", "tested", "check"], ["botStress", "skipStress", "check"],
+    ["botGrades", "grades", "val"], ["botExit", "exit", "val"], ["botRisk", "risk", "num"], ["botMaxOpen", "maxOpen", "num"], ["botMaxDay", "maxDay", "num"], ["botDayLoss", "dayLoss", "num"], ["botRR", "minRR", "num"]];
+  for (const [id, k, kind] of BOT_FIELDS) {
+    const e = $(id);
+    if (kind === "check") e.checked = !!bot[k]; else e.value = bot[k];
+    e.addEventListener("change", () => {
+      const v = kind === "check" ? e.checked : kind === "num" ? +e.value : e.value;
+      if (kind === "num" && !(v > 0)) { e.value = bot[k]; return; }
+      bot[k] = v; saveBot(); renderBot();
+      if (k === "quant" && v && bot.on) qMonitor();
+    });
+  }
+  $("botToggle").addEventListener("click", () => (bot.on ? (bot.on = false, saveBot(), botNote("halt", "", "Bot stopped. Open bot trades keep their stops and targets."), renderBot()) : botStart()));
+  $("botKill").addEventListener("click", () => { if (!botOpen().length || confirm(`Close all ${botOpen().length} open bot trades at the live price and stop the bot?`)) botKill(); });
+  $("botReset").addEventListener("click", () => { if (confirm("Clear the bot's activity log? Trades stay in the journal.")) { botLog = []; saveJSON("term.botlog", botLog); renderBot(); } });
+  if (!Array.isArray(bot.setups)) bot.setups = BOT_SETUPS;
+  $("botSetups").append(el("span", "muted", "Setup types the bot may take:"), ...BOT_SETUPS.map((k) => {
+    const l = el("label"), cb = el("input");
+    cb.type = "checkbox"; cb.checked = bot.setups.includes(k);
+    cb.addEventListener("change", () => { bot.setups = BOT_SETUPS.filter((x) => x === k ? cb.checked : bot.setups.includes(x)); saveBot(); });
+    l.append(cb, " " + SETUP_NAMES[k]);
+    return l;
+  }));
+  syncBotUI();
+  setInterval(() => { if (view === "bot") renderBot(); }, 5_000);
+
   // Hooks into symbol changes and views.
   function afterSymbol() {
     lastNote = null;
@@ -5779,6 +6076,7 @@ self.QLIB = (() => {
     if (v === "chart") { loadChart2(); renderCwQuote(); renderLists(); renderEvents(); }
     if (v === "flow") enterFlow();
     if (v === "today") renderToday();
+    if (v === "bot") renderBot();
     if (v === "quant" && !$("qSym").value) { $("qSym").value = binSym(symbol) ? bareTicker(symbol) : "BTCUSDT"; runQuant(); }
     if (v === "tail" && !$("tlSym").value) { $("tlSym").value = binSym(symbol) ? bareTicker(symbol) : "BTCUSDT"; runTail(); }
     if (v === "scan") { renderScan(); if (Date.now() - scanAt > 50_000) runScan(false); }

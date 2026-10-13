@@ -1,0 +1,250 @@
+// This Pine Script® code is subject to the terms of the MIT License (see LICENSE).
+// EMA Ribbon + RSI, upgraded. Based on "Price-Hugging EMA Ribbon + RSI".
+//
+// What changed from the original:
+//   • Realistic costs: 0.1% commission per side and 2 ticks slippage (the original had none).
+//   • Risk-based size: each trade risks a set % of equity (the original bet 100% of equity).
+//   • Stops by volatility (ATR) or behind the ribbon, not a fixed %, and targets in R.
+//   • Exits that ride the trend: ribbon flip, ATR trail, or half at 1R + ribbon flip.
+//   • Chop filters: ADX, ribbon width and a higher-timeframe trend (all optional).
+//   • A second entry: pullbacks into a fully stacked ribbon (the original only took crosses).
+//   • In-sample vs out-of-sample table with a verdict, so you can see if the edge is real.
+//   • Alerts, including JSON messages for webhook bots.
+// Same rules as the website's BACKTEST setups "EMA ribbon cross" and "EMA ribbon pullback".
+//@version=6
+strategy("EMA Ribbon + RSI — Upgraded", shorttitle = "RIBBON", overlay = true,
+     initial_capital = 10000, commission_type = strategy.commission.percent, commission_value = 0.1,
+     slippage = 2, pyramiding = 0, calc_on_every_tick = false, process_orders_on_close = false)
+
+// ───────────────────────────── Inputs ─────────────────────────────
+const string G_R = "Ribbon"
+emaBase  = input.int(8, "Fastest EMA (ribbon top)", minval = 2, group = G_R)
+emaStep  = input.int(2, "Ribbon tightness (step)", minval = 1, group = G_R)
+
+const string G_E = "Entries"
+entryMode = input.string("Cross + pullback", "Entry", options = ["Ribbon cross", "Ribbon pullback", "Cross + pullback"], group = G_E,
+     tooltip = "Cross: fastest EMA crosses the slowest (the original). Pullback: in a fully stacked ribbon, price dips into it and closes back beyond the fastest EMA.")
+dirOpt    = input.string("Long only", "Direction", options = ["Long only", "Short only", "Both"], group = G_E)
+useRsi    = input.bool(true, "RSI filter", inline = "rsi", group = G_E)
+rsiLen    = input.int(14, "length", minval = 2, inline = "rsi", group = G_E)
+rsiMid    = input.int(50, "above / below", minval = 0, maxval = 100, inline = "rsi", group = G_E)
+confirm   = input.bool(true, "Close must be beyond the fastest EMA", group = G_E)
+reverse   = input.bool(false, "Reverse on an opposite signal", group = G_E)
+cooldown  = input.int(3, "Bars to wait after an exit", minval = 0, group = G_E)
+
+const string G_F = "Chop filters"
+trendF   = input.string("Higher timeframe", "Trend filter", options = ["None", "EMA 200", "Higher timeframe"], group = G_F)
+htf      = input.timeframe("D", "Higher timeframe", group = G_F, tooltip = "Longs only when the higher-timeframe close is above its 50 EMA (last closed bar, no repainting).")
+useAdx   = input.bool(true, "ADX filter", inline = "adx", group = G_F)
+adxMin   = input.float(18, "min", minval = 0, inline = "adx", group = G_F)
+useWidth = input.bool(false, "Ribbon width filter", inline = "w", group = G_F)
+widthMin = input.float(0.3, "min (× ATR)", minval = 0, step = 0.05, inline = "w", group = G_F)
+useVol   = input.bool(false, "Volume above its 20-bar average", group = G_F)
+
+const string G_X = "Risk & exits"
+riskPct  = input.float(1.0, "Risk per trade (% of equity)", minval = 0.1, step = 0.1, group = G_X)
+stopType = input.string("ATR", "Stop", options = ["ATR", "Behind the ribbon", "Percent"], group = G_X)
+atrLen   = input.int(14, "ATR length", minval = 1, group = G_X)
+stopMult = input.float(1.5, "Stop (× ATR)", minval = 0.3, step = 0.1, group = G_X)
+stopPct  = input.float(2.0, "Stop (%) when Stop = Percent", minval = 0.1, step = 0.1, group = G_X)
+targetR  = input.float(2.5, "Target (R)", minval = 0.5, step = 0.5, group = G_X)
+exitMode = input.string("Half at 1R + ribbon flip", "Exit", options = ["Fixed target", "Ribbon flip", "ATR trail", "Half at 1R + ribbon flip"], group = G_X,
+     tooltip = "Ribbon flip: close beyond the slowest EMA ends the trade, so winners can run. The stop always stays in place.")
+
+const string G_T = "Test period"
+fromT = input.time(timestamp("2018-01-01T00:00:00"), "Test from", group = G_T)
+oosT  = input.time(timestamp("2024-01-01T00:00:00"), "Out-of-sample starts", group = G_T, tooltip = "Tune while looking only at results before this date. Trust the strategy only if results after it hold up too.")
+
+// ───────────────────────────── Indicators ─────────────────────────────
+e1 = ta.ema(close, emaBase)
+e2 = ta.ema(close, emaBase + emaStep)
+e3 = ta.ema(close, emaBase + emaStep * 2)
+e4 = ta.ema(close, emaBase + emaStep * 3)
+e5 = ta.ema(close, emaBase + emaStep * 4)
+e6 = ta.ema(close, emaBase + emaStep * 5)
+e7 = ta.ema(close, emaBase + emaStep * 6)
+e8 = ta.ema(close, emaBase + emaStep * 7)
+rsi = ta.rsi(close, rsiLen)
+atr = ta.atr(atrLen)
+e200 = ta.ema(close, 200)
+[diPlus, diMinus, adx] = ta.dmi(14, 14)
+volAvg = ta.sma(volume, 20)
+
+// How many neighbouring EMAs are in order (7 = fully stacked).
+bullStack = (e1 > e2 ? 1 : 0) + (e2 > e3 ? 1 : 0) + (e3 > e4 ? 1 : 0) + (e4 > e5 ? 1 : 0) + (e5 > e6 ? 1 : 0) + (e6 > e7 ? 1 : 0) + (e7 > e8 ? 1 : 0)
+bearStack = (e1 < e2 ? 1 : 0) + (e2 < e3 ? 1 : 0) + (e3 < e4 ? 1 : 0) + (e4 < e5 ? 1 : 0) + (e5 < e6 ? 1 : 0) + (e6 < e7 ? 1 : 0) + (e7 < e8 ? 1 : 0)
+width = atr > 0 ? math.abs(e1 - e8) / atr : 0
+
+htfUp = request.security(syminfo.tickerid, htf, close[1] > ta.ema(close, 50)[1], lookahead = barmerge.lookahead_on)
+trendLong  = trendF == "None" ? true : trendF == "EMA 200" ? close > e200 : htfUp
+trendShort = trendF == "None" ? true : trendF == "EMA 200" ? close < e200 : not htfUp
+filtersOk  = (not useAdx or adx >= adxMin) and (not useVol or volume > volAvg)
+widthOk    = not useWidth or width >= widthMin
+
+crossUp   = ta.crossover(e1, e8)
+crossDn   = ta.crossunder(e1, e8)
+pullUp    = bullStack == 7 and low <= e4 and close > e1 and close > open
+pullDn    = bearStack == 7 and high >= e4 and close < e1 and close < open
+useCross  = entryMode != "Ribbon pullback"
+usePull   = entryMode != "Ribbon cross"
+
+longSig  = ((useCross and crossUp and widthOk) or (usePull and pullUp)) and (not useRsi or rsi > rsiMid) and (not confirm or close > e1) and trendLong and filtersOk
+shortSig = ((useCross and crossDn and widthOk) or (usePull and pullDn)) and (not useRsi or rsi < rsiMid) and (not confirm or close < e1) and trendShort and filtersOk
+allowLong  = dirOpt != "Short only"
+allowShort = dirOpt != "Long only"
+
+// ───────────────────────────── Orders ─────────────────────────────
+var float stopPx = na
+var float tgtPx = na
+var float oneRPx = na
+var float dist = na
+var bool halfDone = false
+var int lastExit = -1000000
+var int closedSeen = 0
+
+if strategy.closedtrades > closedSeen
+    closedSeen := strategy.closedtrades
+    lastExit := bar_index
+
+stopDist(bool isL) =>
+    float d = switch stopType
+        "ATR" => stopMult * atr
+        "Percent" => close * stopPct / 100
+        => isL ? math.max(close - e8 + 0.5 * atr, 0.5 * atr) : math.max(e8 - close + 0.5 * atr, 0.5 * atr)
+    d
+
+flat = strategy.position_size == 0
+ready = time >= fromT and not na(atr) and bar_index - lastExit > cooldown
+canLong  = longSig and allowLong and ready and (flat or (reverse and strategy.position_size < 0))
+canShort = shortSig and allowShort and ready and (flat or (reverse and strategy.position_size > 0))
+
+if canLong
+    dist := stopDist(true)
+    qty = math.min(strategy.equity * riskPct / 100 / dist, strategy.equity / close)
+    stopPx := close - dist
+    tgtPx := close + targetR * dist
+    oneRPx := close + dist
+    halfDone := false
+    strategy.entry("L", strategy.long, qty = qty)
+    alert('{"action":"buy","ticker":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"stop":' + str.tostring(stopPx) + ',"target":' + str.tostring(tgtPx) + '}', alert.freq_once_per_bar_close)
+else if canShort
+    dist := stopDist(false)
+    qty = math.min(strategy.equity * riskPct / 100 / dist, strategy.equity / close)
+    stopPx := close + dist
+    tgtPx := close - targetR * dist
+    oneRPx := close - dist
+    halfDone := false
+    strategy.entry("S", strategy.short, qty = qty)
+    alert('{"action":"sell","ticker":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"stop":' + str.tostring(stopPx) + ',"target":' + str.tostring(tgtPx) + '}', alert.freq_once_per_bar_close)
+
+isLong = strategy.position_size > 0
+isShort = strategy.position_size < 0
+
+// Re-anchor the levels to the real fill (next bar's open) so 1R means what it says.
+if strategy.position_size != 0 and strategy.position_size[1] == 0 and not na(dist)
+    fillPx = strategy.position_avg_price
+    stopPx := isLong ? fillPx - dist : fillPx + dist
+    tgtPx := isLong ? fillPx + targetR * dist : fillPx - targetR * dist
+    oneRPx := isLong ? fillPx + dist : fillPx - dist
+
+if exitMode == "ATR trail" and isLong
+    stopPx := math.max(stopPx, close - stopMult * atr)
+if exitMode == "ATR trail" and isShort
+    stopPx := math.min(stopPx, close + stopMult * atr)
+if exitMode == "Half at 1R + ribbon flip" and not halfDone and strategy.position_size != 0
+    if (isLong and high >= oneRPx) or (isShort and low <= oneRPx)
+        halfDone := true
+        stopPx := strategy.position_avg_price
+
+ribbonExit = exitMode == "Ribbon flip" or exitMode == "Half at 1R + ribbon flip"
+if isLong
+    if exitMode == "Fixed target"
+        strategy.exit("XL", "L", stop = stopPx, limit = tgtPx)
+    else if exitMode == "Half at 1R + ribbon flip"
+        if not halfDone
+            strategy.exit("XL1", "L", qty_percent = 50, stop = stopPx, limit = oneRPx)
+        strategy.exit("XL2", "L", stop = stopPx)
+    else
+        strategy.exit("XL", "L", stop = stopPx)
+    if ribbonExit and close < e8
+        strategy.close("L", comment = "ribbon flip")
+        alert('{"action":"close","ticker":"' + syminfo.ticker + '","price":' + str.tostring(close) + '}', alert.freq_once_per_bar_close)
+if isShort
+    if exitMode == "Fixed target"
+        strategy.exit("XS", "S", stop = stopPx, limit = tgtPx)
+    else if exitMode == "Half at 1R + ribbon flip"
+        if not halfDone
+            strategy.exit("XS1", "S", qty_percent = 50, stop = stopPx, limit = oneRPx)
+        strategy.exit("XS2", "S", stop = stopPx)
+    else
+        strategy.exit("XS", "S", stop = stopPx)
+    if ribbonExit and close > e8
+        strategy.close("S", comment = "ribbon flip")
+        alert('{"action":"close","ticker":"' + syminfo.ticker + '","price":' + str.tostring(close) + '}', alert.freq_once_per_bar_close)
+
+// ───────────────────────────── Visuals ─────────────────────────────
+// Bright when the ribbon is fully stacked, faded when it's tangled (chop).
+strength = math.max(bullStack, bearStack)
+ribCol = e1 > e8 ? color.new(#26a69a, 75 - strength * 7) : color.new(#ef5350, 75 - strength * 7)
+p1 = plot(e1, "EMA 1", color = ribCol)
+plot(e2, "EMA 2", color = ribCol)
+plot(e3, "EMA 3", color = ribCol)
+plot(e4, "EMA 4", color = ribCol)
+plot(e5, "EMA 5", color = ribCol)
+plot(e6, "EMA 6", color = ribCol)
+plot(e7, "EMA 7", color = ribCol)
+p8 = plot(e8, "EMA 8", color = ribCol, linewidth = 2)
+fill(p1, p8, color = e1 > e8 ? color.new(#26a69a, 88) : color.new(#ef5350, 88), title = "Ribbon fill")
+plotshape(longSig and allowLong, "Buy signal", shape.triangleup, location.belowbar, color.new(#4AF626, 0), size = size.small)
+plotshape(shortSig and allowShort, "Sell signal", shape.triangledown, location.abovebar, color.new(#FF433D, 0), size = size.small)
+plot(strategy.position_size != 0 ? stopPx : na, "Stop", color = color.new(#FF433D, 0), style = plot.style_linebr)
+plot(strategy.position_size != 0 and exitMode == "Fixed target" ? tgtPx : na, "Target", color = color.new(#4AF626, 0), style = plot.style_linebr)
+bgcolor(time >= oosT ? color.new(#FB8B1E, 93) : na, title = "Out-of-sample period")
+
+alertcondition(longSig and allowLong, "Ribbon buy signal", "{{ticker}}: EMA ribbon buy signal at {{close}}")
+alertcondition(shortSig and allowShort, "Ribbon sell signal", "{{ticker}}: EMA ribbon sell signal at {{close}}")
+
+// ───────────────────────────── In-sample vs out-of-sample ─────────────────────────────
+f_row(table t, int r, string label, int n, int w, float gp, float gl, float net) =>
+    pf = gl > 0 ? gp / gl : na
+    table.cell(t, 0, r, label, text_color = #FB8B1E, text_font_family = font.family_monospace, text_size = size.small)
+    table.cell(t, 1, r, str.tostring(n), text_color = #E6E6E6, text_font_family = font.family_monospace, text_size = size.small)
+    table.cell(t, 2, r, n > 0 ? str.tostring(100.0 * w / n, "0") + "%" : "—", text_color = #E6E6E6, text_font_family = font.family_monospace, text_size = size.small)
+    table.cell(t, 3, r, na(pf) ? "—" : str.tostring(pf, "0.00"), text_color = na(pf) ? #8C8C8C : pf >= 1 ? #4AF626 : #FF433D, text_font_family = font.family_monospace, text_size = size.small)
+    table.cell(t, 4, r, str.tostring(net, "#,##0"), text_color = net >= 0 ? #4AF626 : #FF433D, text_font_family = font.family_monospace, text_size = size.small)
+    table.cell(t, 5, r, n > 0 ? str.tostring(net / n, "#,##0.00") : "—", text_color = net >= 0 ? #4AF626 : #FF433D, text_font_family = font.family_monospace, text_size = size.small)
+
+var table T = table.new(position.top_right, 6, 4, bgcolor = #000000, frame_color = #FB8B1E, frame_width = 1, border_color = #262626, border_width = 1)
+var bool merged = false
+if barstate.islastconfirmedhistory or barstate.islast
+    int nI = 0
+    int wI = 0
+    float gpI = 0.0
+    float glI = 0.0
+    int nO = 0
+    int wO = 0
+    float gpO = 0.0
+    float glO = 0.0
+    if strategy.closedtrades > 0
+        for i = 0 to strategy.closedtrades - 1
+            p = strategy.closedtrades.profit(i)
+            if strategy.closedtrades.entry_time(i) < oosT
+                nI += 1
+                wI += p > 0 ? 1 : 0
+                gpI += math.max(p, 0)
+                glI += math.max(-p, 0)
+            else
+                nO += 1
+                wO += p > 0 ? 1 : 0
+                gpO += math.max(p, 0)
+                glO += math.max(-p, 0)
+    for c = 0 to 5
+        table.cell(T, c, 0, array.get(array.from("", "TRADES", "WIN", "PF", "NET", "AVG TRADE"), c), text_color = #8C8C8C, text_font_family = font.family_monospace, text_size = size.small)
+    f_row(T, 1, "IN-SAMPLE", nI, wI, gpI, glI, gpI - glI)
+    f_row(T, 2, "OUT-OF-SAMPLE", nO, wO, gpO, glO, gpO - glO)
+    pfO = glO > 0 ? gpO / glO : na
+    verdictTxt = nO < 15 ? "NOT ENOUGH OUT-OF-SAMPLE TRADES" : not na(pfO) and pfO >= 1.2 ? "EDGE HOLDS OUT-OF-SAMPLE: paper trade it next" : not na(pfO) and pfO >= 1 ? "WEAK: barely breaks even" : "NO EDGE: don't trade this"
+    table.cell(T, 0, 3, verdictTxt, text_color = nO < 15 ? #FB8B1E : not na(pfO) and pfO >= 1.2 ? #4AF626 : #FF433D, text_font_family = font.family_monospace, text_size = size.small)
+    if not merged
+        table.merge_cells(T, 0, 3, 5, 3)
+        merged := true
